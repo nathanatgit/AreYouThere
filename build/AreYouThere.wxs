@@ -14,7 +14,8 @@
            Scope="perMachine">
     <SummaryInformation Description="在吗 AreYouThere：检测到你在电脑前时阻止 Windows 自动息屏。完全离线运行。" Codepage="936" />
 
-    <MajorUpgrade DowngradeErrorMessage="已经安装了更新版本的「在吗」。" />
+    <!-- 同版本号的安装包也替换已安装的版本，否则会并排装出两个同名条目 -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="已经安装了更新版本的『在吗』。" />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon" SourceFile="$(IconFile)" />
@@ -39,6 +40,15 @@
     <InstallExecuteSequence>
       <Custom Action="RemoveStartupEntry" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
+
+    <!-- 安装完成后启动程序。这个安装包没有向导界面，不启动的话用户只看到进度条一闪而过。
+         放在界面序列里：由安装程序的客户端进程以当前用户身份启动（不是管理员，也不在服务会话里）；
+         静默安装（/qn）不执行界面序列，因此不会启动。只在首次安装和升级时启动，修复、卸载时不启动。 -->
+    <CustomAction Id="LaunchApp" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]AreYouThere.exe&quot;"
+                  Execute="immediate" Return="asyncNoWait" />
+    <InstallUISequence>
+      <Custom Action="LaunchApp" After="ExecuteAction" Condition="NOT Installed AND NOT REMOVE" />
+    </InstallUISequence>
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut">
