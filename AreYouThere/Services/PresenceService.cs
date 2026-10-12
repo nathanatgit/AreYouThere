@@ -9,7 +9,9 @@ using Windows.Media.MediaProperties;
 namespace AreYouThere.Services;
 
 internal sealed record PresenceStatus(string CameraMessage, string FaceMessage);
-internal sealed record PresenceFrame(SoftwareBitmap Bitmap, Windows.Foundation.Rect? FaceBox);
+/// <summary>一张检测到的人脸。AreaPercent 是人脸框占整个画面的面积百分比；Close 表示达到阈值、算作“在电脑前”。</summary>
+internal sealed record DetectedFace(Windows.Foundation.Rect Box, double AreaPercent, bool Close);
+internal sealed record PresenceFrame(SoftwareBitmap Bitmap, IReadOnlyList<DetectedFace> Faces);
 /// <summary>Started=false 且 Error=null 表示启动途中被 Stop 取消。</summary>
 internal sealed record StartResult(bool Started, string? Error = null, bool PermissionDenied = false);
 
@@ -33,11 +35,15 @@ internal sealed class PresenceService : IDisposable
     private static readonly TimeSpan NoFrameTimeout = TimeSpan.FromSeconds(10);
     // 刚开流时自动曝光还没稳定，画面偏暗，丢弃前几帧。
     private const int WarmupFrames = 8;
+    // 显示预览时额外检测人脸，只用于实时画框和显示面积，不参与在场判断。
+    private static readonly TimeSpan OverlayInterval = TimeSpan.FromMilliseconds(500);
 
     /// <summary>true：离开后由本程序锁定电脑；false：交还系统电源策略。</summary>
     public bool LockWhenAway { get; set; }
     /// <summary>离开多久后锁定；null 表示延迟一个检测间隔。</summary>
     public TimeSpan? LockDelay { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>人脸框至少占画面多少百分比才算“在电脑前”；远处的人或墙上的照片通常较小。0 表示任何人脸都算。</summary>
+    public double MinFaceAreaPercent { get; set; } = 3;
 
     public event EventHandler<PresenceStatus>? StatusChanged;
     public event EventHandler<PresenceFrame>? FrameReady;
@@ -45,6 +51,8 @@ internal sealed class PresenceService : IDisposable
     public event EventHandler<TimeSpan>? LockCountdownStarted;
     /// <summary>运行中摄像头出错（被拔出、被占用、长时间无画面），参数为给用户的说明。检测已停止。</summary>
     public event EventHandler<string>? CameraFailed;
+    /// <summary>检测时发现多张达到阈值的人脸，参数为张数。同一段多人期间只触发一次。</summary>
+    public event EventHandler<int>? MultipleFacesDetected;
 
     private CancellationTokenSource? _cts;
     private uint _intervalSeconds = 60;
@@ -60,7 +68,9 @@ internal sealed class PresenceService : IDisposable
     private long _latestFrameTimestamp, _lastFrameTimestamp;
     private int _framesSinceStart;
     private volatile bool _previewWanted;
-    private Windows.Foundation.Rect? _lastFaceBox;
+    private volatile IReadOnlyList<DetectedFace> _lastFaces = [];
+    private DateTimeOffset _lastOverlay;
+    private bool _multipleFacesWarned;
 
     public async Task<StartResult> StartAsync(string cameraId, uint seconds, bool previewWanted, Action<string> report)
     {
@@ -89,11 +99,17 @@ internal sealed class PresenceService : IDisposable
         {
             return Fail(cts, "没有摄像头权限。请在 Windows 设置 › 隐私和安全性 › 摄像头 中，开启“摄像头访问”和“允许桌面应用访问你的摄像头”。", permission: true);
         }
+        catch (CameraInUseException)
+        {
+            return Fail(cts, "摄像头可能正被其他程序独占使用");
+        }
         catch (Exception ex)
         {
             return Fail(cts, $"无法打开摄像头：{ex.Message}");
         }
     }
+
+    private sealed class CameraInUseException : Exception;
 
     private StartResult Fail(CancellationTokenSource cts, string error, bool permission = false)
     {
@@ -102,10 +118,11 @@ internal sealed class PresenceService : IDisposable
         return new(false, error, permission);
     }
 
-    // 优先独占；摄像头正被其他程序（如视频会议）使用时退回只读共享模式。
+    // 优先只读共享：本程序只读取画面、不改摄像头设置，共享模式不会占住摄像头，
+    // 视频会议、录像软件之后仍能正常打开并控制它。个别不支持共享的驱动才退回独占。
     private static async Task<MediaCapture> OpenAsync(MediaFrameSourceGroup group)
     {
-        foreach (var mode in new[] { MediaCaptureSharingMode.ExclusiveControl, MediaCaptureSharingMode.SharedReadOnly })
+        foreach (var mode in new[] { MediaCaptureSharingMode.SharedReadOnly, MediaCaptureSharingMode.ExclusiveControl })
         {
             var capture = new MediaCapture();
             try
@@ -119,9 +136,15 @@ internal sealed class PresenceService : IDisposable
                 });
                 return capture;
             }
-            catch (Exception ex) when (ex is not UnauthorizedAccessException && mode == MediaCaptureSharingMode.ExclusiveControl)
+            catch (Exception ex) when (ex is not UnauthorizedAccessException && mode == MediaCaptureSharingMode.SharedReadOnly)
             {
                 capture.Dispose();
+            }
+            catch (Exception ex) when (ex is not UnauthorizedAccessException)
+            {
+                // 共享和独占都打不开：通常是其他程序占着不放，系统给出的错误信息对用户没有帮助
+                capture.Dispose();
+                throw new CameraInUseException();
             }
             catch
             {
@@ -189,7 +212,7 @@ internal sealed class PresenceService : IDisposable
             if (_previewWanted) preview = SoftwareBitmap.Copy(copy);
         }
         if (preview is null) return;
-        FrameReady?.Invoke(this, new PresenceFrame(preview, _lastFaceBox));
+        FrameReady?.Invoke(this, new PresenceFrame(preview, _lastFaces));
     }
 
     private void Capture_Failed(MediaCapture sender, MediaCaptureFailedEventArgs args)
@@ -221,10 +244,15 @@ internal sealed class PresenceService : IDisposable
                     try
                     {
                         // 刚开流时还没有可用的画面，此时不算一次检测，稍后重试
-                        if (await DetectLatestFrameAsync() is bool faceSeen)
+                        if (await DetectLatestFrameAsync() is { } faces)
                         {
                             if (token.IsCancellationRequested) return;
-                            _nextDetection = HandleResult(faceSeen, report);
+                            var close = faces.Count(f => f.Close);
+                            ReportStatus(close > 0 ? $"已检测到人脸（{DescribeFaces(faces)}）"
+                                : faces.Count > 0 ? $"人脸太小，视为不在（{DescribeFaces(faces)}）" : "未检测到人脸");
+                            if (close >= 2 && !_multipleFacesWarned) MultipleFacesDetected?.Invoke(this, close);
+                            _multipleFacesWarned = close >= 2;
+                            _nextDetection = HandleResult(close > 0, report);
                         }
                         else if (now - _streamStartedAt > NoFrameTimeout)
                         {
@@ -238,6 +266,11 @@ internal sealed class PresenceService : IDisposable
                         _nextDetection = DateTimeOffset.UtcNow.AddSeconds(_intervalSeconds);
                         report("状态：本次摄像头检测失败，将在下个周期重试");
                     }
+                }
+                else if (_streaming && _previewWanted && now - _lastOverlay >= OverlayInterval)
+                {
+                    _lastOverlay = now;
+                    try { await DetectLatestFrameAsync(); } catch { }
                 }
 
                 // 省电：看不到预览且离下次检测还早时，关闭摄像头流（指示灯也会熄灭）
@@ -292,7 +325,11 @@ internal sealed class PresenceService : IDisposable
         return next < deadline ? next : deadline;
     }
 
-    private async Task<bool?> DetectLatestFrameAsync()
+    private static string DescribeFaces(IReadOnlyList<DetectedFace> faces) =>
+        faces.Count == 1 ? $"面积 {faces[0].AreaPercent:0.0}%" : $"{faces.Count} 张，最大 {faces.Max(f => f.AreaPercent):0.0}%";
+
+    /// <summary>检测最新一帧中的人脸并更新预览框；没有可用画面时返回 null。</summary>
+    private async Task<IReadOnlyList<DetectedFace>?> DetectLatestFrameAsync()
     {
         var detector = _detector;
         if (detector is null) return null;
@@ -307,13 +344,19 @@ internal sealed class PresenceService : IDisposable
         if (bitmap is null) return null;
         using (bitmap)
         {
-            var faces = await detector.DetectFacesAsync(bitmap);
-            var box = faces.Count > 0
-                ? new Windows.Foundation.Rect(faces[0].FaceBox.X, faces[0].FaceBox.Y, faces[0].FaceBox.Width, faces[0].FaceBox.Height)
-                : (Windows.Foundation.Rect?)null;
-            _lastFaceBox = box;
-            ReportStatus(faces.Count > 0 ? "已检测到人脸" : "未检测到人脸");
-            return faces.Count > 0;
+            var frameArea = (double)bitmap.PixelWidth * bitmap.PixelHeight;
+            var threshold = MinFaceAreaPercent;
+            var faces = (await detector.DetectFacesAsync(bitmap))
+                .Select(f =>
+                {
+                    var b = f.FaceBox;
+                    var percent = b.Width * b.Height / frameArea * 100;
+                    return new DetectedFace(new Windows.Foundation.Rect(b.X, b.Y, b.Width, b.Height), percent, percent >= threshold);
+                })
+                .OrderByDescending(f => f.AreaPercent)
+                .ToList();
+            _lastFaces = faces;
+            return faces;
         }
     }
 
@@ -342,9 +385,10 @@ internal sealed class PresenceService : IDisposable
         _detector = null;
         _streaming = false;
         lock (_frameLock) { _latestFrame?.Dispose(); _latestFrame = null; }
-        _lastFaceBox = null;
+        _lastFaces = [];
         _lastFaceMessage = null;
         _awaySince = null;
+        _multipleFacesWarned = false;
         StatusChanged?.Invoke(this, new("已关闭", "未检测"));
         KeepAwake(false);
     }

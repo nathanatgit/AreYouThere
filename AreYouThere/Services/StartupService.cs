@@ -68,7 +68,7 @@ internal static class StartupService
             ? $"点击“确定”后将按当前设置每 {PowerPolicy.Describe(TimeSpan.FromSeconds(settings.IntervalSeconds))}检测一次，摄像头指示灯会在检测时亮起。显示预览时摄像头会持续工作。"
             : "尚未在应用内确认开机自启动，摄像头检测保持关闭。请在应用中启用并确认此选项。";
         var text = "AreYouThere（在吗）已随 Windows 登录自动启动，正在运行。\n\n" + action
-            + "\n\n请确认当前场所适合使用摄像头；在公共或隐私敏感场所使用可能引起误会或纠纷。画面仅在本机内存中处理，不保存、不上传。"
+            + "\n\n请确认当前场所适合使用摄像头。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。画面仅在本机内存中处理，不保存、不上传。"
             + "\n\n可在应用中关闭检测或开机自启动，右键托盘图标可退出程序。请点击“确定”确认已知晓。";
         var ok = new Button { Content = "确定", HorizontalAlignment = HorizontalAlignment.Right };
         var content = new StackPanel { Spacing = 20 };

@@ -10,7 +10,10 @@ internal sealed class AppSettings
     public string? CameraId { get; set; }
     public uint IntervalSeconds { get; set; } = 60;
     public bool PreviewEnabled { get; set; } = true;
-    public bool LockWhenAway { get; set; }
+    /// <summary>默认离开后锁定：本工具的目的就是人不在时不让屏幕暴露给别人。</summary>
+    public bool LockWhenAway { get; set; } = true;
+    /// <summary>人脸框至少占画面的百分比，才算“在电脑前”。</summary>
+    public double MinFaceAreaPercent { get; set; } = 3;
     public bool StartupConsent { get; set; }
     public bool SkipStartupReminder { get; set; }
     /// <summary>离开后多少秒锁定；-1 表示延迟一个检测间隔。</summary>

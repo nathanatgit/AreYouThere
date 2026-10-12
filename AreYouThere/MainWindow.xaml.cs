@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window
         _presence.FrameReady += Presence_FrameReady;
         _presence.LockCountdownStarted += Presence_LockCountdownStarted;
         _presence.CameraFailed += Presence_CameraFailed;
+        _presence.MultipleFacesDetected += Presence_MultipleFacesDetected;
         _cameraCatalog.Changed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = RefreshCamerasAsync());
 
         // 预览只在窗口可见时有意义；窗口隐藏/最小化后让摄像头进入省电的间歇工作模式
@@ -185,7 +186,7 @@ public sealed partial class MainWindow : Window
                     Title = "确认开机自启动与摄像头使用",
                     Content = "启用后，AreYouThere 将在你登录 Windows 时自动运行。每次启动都会弹出提醒，需点击“确定”；确认后自动开启在场检测并驻留托盘。\n\n"
                         + $"按当前设置，每 {PowerPolicy.Describe(TimeSpan.FromSeconds(IntervalSeconds))}会打开摄像头检测，指示灯会亮起。显示预览时摄像头持续工作；离开后的锁定倒计时也可能更频繁地检测。检测间隔等设置修改后会用于下次启动。\n\n"
-                        + "即使完全离线、不保存或上传画面，摄像头指示灯仍可能让他人以为正在录像。请勿在公共或隐私敏感场所使用，以免产生误会或纠纷。\n\n"
+                        + "即使完全离线、不保存或上传画面，摄像头指示灯仍可能让他人以为正在录像。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。\n\n"
                         + "你可以随时关闭此选项取消自启动，关闭检测停用摄像头，或通过托盘菜单退出。确认表示你已了解并同意上述行为。",
                     PrimaryButtonText = "我已了解，启用开机自启动",
                     CloseButtonText = "取消",
@@ -239,6 +240,30 @@ public sealed partial class MainWindow : Window
         LockDelayBox.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
         _presence.LockWhenAway = _settings.LockWhenAway;
         _presence.LockDelay = _settings.LockDelaySeconds < 0 ? null : TimeSpan.FromSeconds(_settings.LockDelaySeconds);
+        FaceAreaSlider.Value = Math.Clamp(_settings.MinFaceAreaPercent, FaceAreaSlider.Minimum, FaceAreaSlider.Maximum);
+        ApplyFaceArea();
+    }
+
+    private void FaceAreaSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_ready) return;
+        ApplyFaceArea();
+        _settings.Save();
+    }
+
+    private void ApplyFaceArea()
+    {
+        _settings.MinFaceAreaPercent = FaceAreaSlider.Value;
+        _presence.MinFaceAreaPercent = FaceAreaSlider.Value;
+        FaceAreaText.Text = FaceAreaSlider.Value == 0
+            ? "当前阈值：0%（任何大小的人脸都算你在，不推荐）"
+            : $"当前阈值：{FaceAreaSlider.Value:0.#}%";
+    }
+
+    private void Presence_MultipleFacesDetected(object? sender, int count)
+    {
+        DispatcherQueue.TryEnqueue(() => _tray.ShowBalloon("「在吗」检测到多张近处人脸",
+            $"画面中有 {count} 张人脸达到面积阈值。只要其中一张还在，「在吗」就会认为你在电脑前，你离开后电脑可能不会锁定。请调整摄像头角度或提高人脸面积阈值。"));
     }
 
     private static void SelectByTag(ComboBox box, string tag)
@@ -539,20 +564,43 @@ public sealed partial class MainWindow : Window
                 await source.SetBitmapAsync(e.Bitmap);
                 PreviewElement.Source = source;
                 PreviewPlaceholder.Visibility = Visibility.Collapsed;
-                if (e.FaceBox is { } box)
-                {
-                    Canvas.SetLeft(FaceBox, box.X);
-                    Canvas.SetTop(FaceBox, box.Y);
-                    FaceBox.Width = box.Width;
-                    FaceBox.Height = box.Height;
-                    FaceBox.Visibility = Visibility.Visible;
-                }
-                else FaceBox.Visibility = Visibility.Collapsed;
+                DrawFaces(e.Faces, e.Bitmap.PixelWidth);
             }
             catch { }
             finally { e.Bitmap.Dispose(); Volatile.Write(ref _previewBusy, 0); }
         });
         if (!queued) { e.Bitmap.Dispose(); Volatile.Write(ref _previewBusy, 0); }
+    }
+
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush CloseFaceBrush = new(Windows.UI.Color.FromArgb(255, 0x35, 0xD0, 0x7F));
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FarFaceBrush = new(Windows.UI.Color.FromArgb(200, 0xB0, 0xB0, 0xB0));
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush LabelTextBrush = new(Microsoft.UI.Colors.Black);
+
+    // 画布按摄像头原始像素布局（外层 Viewbox 统一缩放），线宽和字号按画面宽度换算，缩放后大小一致
+    private void DrawFaces(IReadOnlyList<DetectedFace> faces, int frameWidth)
+    {
+        FaceCanvas.Children.Clear();
+        var unit = frameWidth / 320.0;
+        foreach (var face in faces)
+        {
+            var brush = face.Close ? CloseFaceBrush : FarFaceBrush;
+            var rect = new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Width = face.Box.Width, Height = face.Box.Height, Stroke = brush,
+                StrokeThickness = 1.5 * unit, RadiusX = 2 * unit, RadiusY = 2 * unit
+            };
+            Canvas.SetLeft(rect, face.Box.X);
+            Canvas.SetTop(rect, face.Box.Y);
+            var label = new Border
+            {
+                Background = brush, CornerRadius = new CornerRadius(2 * unit), Padding = new Thickness(2 * unit, 0, 2 * unit, 0),
+                Child = new TextBlock { Text = $"{face.AreaPercent:0.0}%", FontSize = 10 * unit, Foreground = LabelTextBrush }
+            };
+            Canvas.SetLeft(label, face.Box.X);
+            Canvas.SetTop(label, Math.Max(0, face.Box.Y - 14 * unit));
+            FaceCanvas.Children.Add(rect);
+            FaceCanvas.Children.Add(label);
+        }
     }
 
     private void Presence_StatusChanged(object? sender, PresenceStatus e)
@@ -641,7 +689,7 @@ public sealed partial class MainWindow : Window
     {
         PreviewElement.Source = null;
         PreviewPlaceholder.Visibility = Visibility.Visible;
-        FaceBox.Visibility = Visibility.Collapsed;
+        FaceCanvas.Children.Clear();
     }
 
     #endregion

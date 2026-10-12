@@ -18,7 +18,7 @@
     <Product>AreYouThere</Product>
     <AssemblyTitle>在吗 AreYouThere</AssemblyTitle>
     <Description>A lightweight workaround for Microsoft Presence Sensing: keeps the screen awake while a webcam sees you.</Description>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <!-- 未打包时 WinUI 默认找“<exe 名>.pri”；统一叫 resources.pri，这样便携版改了文件名也能找到资源 -->
     <ProjectPriFileName>resources.pri</ProjectPriFileName>
   </PropertyGroup>

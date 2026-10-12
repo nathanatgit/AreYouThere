@@ -35,7 +35,7 @@
 
       <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="18">
         <InfoBar IsOpen="True" Severity="Warning" IsClosable="False"
-          Message="隐私提醒：启用后摄像头指示灯会亮起（显示预览时常亮，后台运行时每次检测短暂亮起）。请勿在隐私敏感场所使用，以免产生误会或纠纷。" />
+          Message="隐私提醒：启用后摄像头指示灯会亮起（显示预览时常亮，后台运行时每次检测短暂亮起）。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。" />
         <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" Title="可能存在冲突" />
         <InfoBar x:Name="CameraProblem" IsOpen="False" Visibility="Collapsed" Severity="Error" IsClosable="False">
           <InfoBar.ActionButton>
@@ -109,15 +109,19 @@
             <Viewbox>
               <Grid>
                 <Image x:Name="PreviewElement" Stretch="None" />
-                <Canvas IsHitTestVisible="False">
-                  <Rectangle x:Name="FaceBox" Stroke="#35D07F" StrokeThickness="6" RadiusX="8" RadiusY="8" Visibility="Collapsed" />
-                </Canvas>
+                <!-- 绿框：达到面积阈值、算作你在电脑前；灰框：太小被忽略。框上标注占画面的面积百分比 -->
+                <Canvas x:Name="FaceCanvas" IsHitTestVisible="False" />
               </Grid>
             </Viewbox>
           </Grid>
           <TextBlock x:Name="CameraStatusText" Text="摄像头状态：尚未打开" Opacity="0.75" TextWrapping="Wrap" />
           <TextBlock x:Name="FaceStatusText" Text="人脸状态：等待检测" Opacity="0.75" TextWrapping="Wrap" />
           <TextBlock Text="预览仅用于本地调整位置，不保存或上传图像。" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+          <Slider x:Name="FaceAreaSlider" Header="人脸最小面积（占画面）" Minimum="0" Maximum="50" StepFrequency="0.5"
+                  TickFrequency="5" TickPlacement="Outside" ValueChanged="FaceAreaSlider_ValueChanged" />
+          <TextBlock x:Name="FaceAreaText" Opacity="0.75" TextWrapping="Wrap" />
+          <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
+            Text="只有面积不小于此阈值的人脸（绿框）才算你在电脑前；远处的人、路过的人或墙上的照片通常较小（灰框），会被忽略。请先调整摄像头，坐在平时的位置查看绿框上的百分比，把阈值设为略低于它（例如显示 8% 时设为 4–5%）。阈值太小时，在公共场所可能把附近的其他人当成你，你离开后电脑不会锁定；太大时你稍微坐远就会被当成离开。" />
         </StackPanel>
       </Border>
     </Grid>
