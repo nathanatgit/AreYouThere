@@ -17,6 +17,29 @@ A lightweight workaround for Microsoft's official Presence Sensing feature, whic
 - 可选择使用哪个摄像头（显示编号、名称和前置/后置）；插拔摄像头自动刷新；没有摄像头或没有权限时给出提示
 - 省电：不显示预览时，只在每次检测时打开摄像头约 1–2 秒，其余时间关闭；界面底部按当前设置提示耗电程度（几乎无影响 / 轻微 / 中等 / 非常耗电）
 
+## 下载
+
+到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载：
+
+- **MSI**（x64 / x86）：安装版，推荐
+- **便携版 exe**（x64 / x86）：单个文件，下载即用
+- **zip**（x64 / x86）：文件夹版
+- **msixbundle**：x86 / x64 / ARM64，ARM 设备请用这个
+
+需要 Windows 10 1809 或更高版本。
+
+## 发布
+
+推送 `vX.Y.Z` 标签即可由 GitHub Actions（`.github/workflows/release.yml`）自动构建并发布全部产物。本地构建同样的产物：
+
+```powershell
+./build/build-release.ps1 -Version 0.1.0 -Arch x64            # zip、便携版、msi、msix
+./build/build-release.ps1 -Version 0.1.0 -Arch arm64 -Kinds msix
+./build/build-release.ps1 -Version 0.1.0 -Bundle              # 合并 out/msix 为 msixbundle
+```
+
+MSI 需要 WiX 5（`dotnet tool install --global wix --version 5.0.2`）。
+
 ## 构建
 
 需要 .NET 8 SDK（或 Visual Studio 2022 + Windows App SDK 工作负载）：

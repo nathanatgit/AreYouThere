@@ -84,6 +84,15 @@
         <TextBlock x:Name="StatusText" Text="状态：未启用" Opacity="0.75" TextWrapping="Wrap" />
         <TextBlock Text="关闭此窗口后程序会继续在右下角托盘运行。单击托盘图标打开窗口，右键可启用/关闭或退出。" TextWrapping="Wrap" Opacity="0.65" />
         <TextBlock x:Name="PowerSummaryText" TextWrapping="Wrap" Opacity="0.75" />
+        <StackPanel Spacing="4" Margin="0,8,0,0">
+          <TextBlock Text="关于" FontWeight="SemiBold" />
+          <TextBlock x:Name="AboutText" Opacity="0.75" TextWrapping="Wrap" />
+          <!-- 链接只是交给系统浏览器打开，程序本身仍然不联网 -->
+          <HyperlinkButton Padding="0" NavigateUri="https://github.com/nathanatgit/AreYouThere"
+                           ToolTipService.ToolTip="在浏览器中打开">
+            <TextBlock Text="github.com/nathanatgit/AreYouThere（在浏览器中打开）" TextWrapping="Wrap" />
+          </HyperlinkButton>
+        </StackPanel>
       </StackPanel>
 
       <Border x:Name="PreviewCard" Grid.Row="1" Grid.Column="1" Width="320" VerticalAlignment="Top"

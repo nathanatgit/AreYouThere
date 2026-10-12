@@ -40,6 +40,8 @@ public sealed partial class MainWindow : Window
 
         RootScroll.Loaded += (_, _) => RootScroll.Focus(FocusState.Programmatic);
         EnabledSwitch.IsEnabled = false; // 找到摄像头之前不能启用
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        AboutText.Text = $"在吗 AreYouThere v{version?.ToString(3)} · MIT 许可证 · 开源免费";
         ApplySettings();
         _ready = true;
         RefreshPolicyInfo();

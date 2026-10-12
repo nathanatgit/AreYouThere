@@ -1,0 +1,38 @@
+<!--
+  「在吗」MSI 安装包（WiX 5）。由 build/build-release.ps1 调用：
+    wix build AreYouThere.wxs -arch x64 -d Version=0.1.0 -d SourceDir=<publish 目录> -d IconFile=<icon.ico>
+  安装到 Program Files\AreYouThere，并在开始菜单创建快捷方式。
+  UpgradeCode 不能修改，否则新版本无法自动替换旧版本。
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="在吗 AreYouThere"
+           Manufacturer="HGY"
+           Version="$(Version)"
+           UpgradeCode="6C2B7A4E-3F1D-4B8A-9E25-0D7C41A9F3B6"
+           Language="2052"
+           Codepage="936"
+           Scope="perMachine">
+    <SummaryInformation Description="在吗 AreYouThere：检测到你在电脑前时阻止 Windows 自动息屏。完全离线运行。" Codepage="936" />
+
+    <MajorUpgrade DowngradeErrorMessage="已经安装了更新版本的「在吗」。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/nathanatgit/AreYouThere" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="AreYouThere">
+        <Files Include="$(SourceDir)\**" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="AppShortcut" Name="在吗 AreYouThere" Description="检测到你在电脑前时阻止 Windows 自动息屏"
+                  Target="[INSTALLFOLDER]AreYouThere.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+        <RegistryValue Root="HKLM" Key="Software\AreYouThere" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+  </Package>
+</Wix>

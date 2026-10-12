@@ -55,7 +55,9 @@ dotnet build AreYouThere\AreYouThere.csproj -p:Platform=x64
 9. 省电：预览不可见（预览关闭、窗口隐藏或最小化）时，距下次检测超过 8 秒就停止 MediaFrameReader，到点再开流；开流后丢弃前 8 帧等自动曝光稳定。已用注册表 CapabilityAccessManager 的 LastUsedTimeStop 验证：15 秒间隔下每次只亮约 1 秒。
 10. 摄像头故障：MediaCapture.Failed、开流 10 秒无画面、帧超过 3 秒未更新都会停止检测并释放唤醒，避免用旧画面一直保持常亮。
 11. 程序不含任何网络代码，界面和 README 都以此为卖点；以后加功能（如检查更新）要谨慎，会破坏这个承诺。
-12. 发布：自包含 + `PublishTrimmed=true` 约 82 MB（zip 约 34 MB），不裁剪约 168 MB。设置序列化用了源生成，裁剪安全。
+12. 发布：推送 vX.Y.Z 标签触发 .github/workflows/release.yml；x86/x64 出 zip、便携版、msi，x86/x64/arm64 合成 msixbundle（ARM64 只走 MSIX）。构建逻辑全在 build/build-release.ps1。
+13. x86 坑：32 位 user32 没有 SetWindowLongPtrW 导出，TrayService 按 IntPtr.Size 选择；资源索引统一命名为 resources.pri（ProjectPriFileName），否则改名后的便携版 exe 找不到 XAML 资源而闪退。
+14. 旧的发布大小说明：自包含 + `PublishTrimmed=true` 约 82 MB（zip 约 34 MB），不裁剪约 168 MB。设置序列化用了源生成，裁剪安全。
 
 ## 后续建议
 
