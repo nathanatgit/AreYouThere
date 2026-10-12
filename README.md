@@ -18,8 +18,6 @@ A lightweight workaround for Microsoft's official Presence Sensing feature, whic
 
 ## 下载
 
-> Microsoft Store 版本正在审核中，上架后会在这里提供链接。
-
 到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载，x64 / x86 / ARM64 都有：
 
 - **MSI**：安装版，推荐
