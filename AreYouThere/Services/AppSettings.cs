@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace AreYouThere.Services;
 
-/// <summary>保存在 %LOCALAPPDATA%\AreYouThere\settings.json 的用户设置。不保存“是否启用”，避免启动即开摄像头。</summary>
+/// <summary>本地用户设置。不保存检测开关；手动启动默认关闭，登录启动仅在明确同意后自动检测。</summary>
 internal sealed class AppSettings
 {
     /// <summary>MediaFrameSourceGroup.Id；为空或已拔出时使用第一个可用摄像头。</summary>
@@ -11,6 +11,8 @@ internal sealed class AppSettings
     public uint IntervalSeconds { get; set; } = 60;
     public bool PreviewEnabled { get; set; } = true;
     public bool LockWhenAway { get; set; }
+    public bool StartupConsent { get; set; }
+    public bool SkipStartupReminder { get; set; }
     /// <summary>离开后多少秒锁定；-1 表示延迟一个检测间隔。</summary>
     public int LockDelaySeconds { get; set; } = 30;
 
@@ -25,12 +27,14 @@ internal sealed class AppSettings
 
     public void Save()
     {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, AppSettingsJsonContext.Default.AppSettings));
-        }
+        try { SaveOrThrow(); }
         catch { }
+    }
+
+    public void SaveOrThrow()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        File.WriteAllText(FilePath, JsonSerializer.Serialize(this, AppSettingsJsonContext.Default.AppSettings));
     }
 }
 

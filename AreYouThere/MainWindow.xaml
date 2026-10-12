@@ -30,7 +30,7 @@
         <TextBlock Opacity="0.75" TextWrapping="Wrap"
           Text="微软官方的「存在感知」(Presence Sensing) 只在部分新款设备上提供。「在吗」是它的轻量替代方案：用普通摄像头判断你是否在电脑前，在的时候暂时阻止 Windows 自动息屏。" />
         <InfoBar IsOpen="True" Severity="Success" IsClosable="False" Title="完全离线，只在本机处理"
-          Message="「在吗」没有任何联网功能：不上传、不收集、不保存任何画面或数据。摄像头画面只在本机内存中分析，分析完立即丢弃。" />
+          Message="「在吗」没有任何联网功能：不上传、不收集、不保存任何画面或检测数据。摄像头画面只在本机内存中分析，分析完立即丢弃；偏好设置仅保存在本机。" />
       </StackPanel>
 
       <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="18">
@@ -53,6 +53,9 @@
                      Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
         <ToggleSwitch x:Name="EnabledSwitch" Header="启用在场检测" Toggled="EnabledSwitch_Toggled" />
+        <ToggleSwitch x:Name="StartupSwitch" Header="开机自启动（登录 Windows 后）" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
+        <TextBlock x:Name="StartupStatusText" Text="默认关闭。启用前需确认隐私提醒；每次随开机启动都需点击“确定”，之后才开启检测并驻留托盘。" Opacity="0.65" TextWrapping="Wrap" />
+        <Button x:Name="RestoreStartupReminderButton" Content="恢复每次开机运行提醒" IsEnabled="False" Click="RestoreStartupReminder_Click" />
         <ToggleSwitch x:Name="PreviewSwitch" Header="显示摄像头预览" IsOn="True" Toggled="PreviewSwitch_Toggled" />
         <StackPanel Spacing="8">
           <TextBlock Text="检测间隔" />

@@ -11,6 +11,7 @@ internal sealed class TrayService : IDisposable
 {
     /// <summary>第二个实例启动时广播此消息，让已运行的实例显示窗口。</summary>
     public static readonly uint ShowWindowMessage = RegisterWindowMessage("AreYouThere.ShowWindow");
+    public static readonly uint StartupLaunchMessage = RegisterWindowMessage("AreYouThere.StartupLaunch");
     private static readonly uint TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
 
     private const uint WM_APP = 0x8000, WM_NULL = 0x0000, WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
@@ -32,6 +33,7 @@ internal sealed class TrayService : IDisposable
 
     /// <summary>当前会话被锁定（true）或解锁（false）。</summary>
     public event Action<bool>? SessionLockChanged;
+    public event Action? StartupLaunchRequested;
 
     public TrayService(Window window, string iconPath, Func<bool> isEnabled, Action toggle, Action open, Action exit)
     {
@@ -84,6 +86,7 @@ internal sealed class TrayService : IDisposable
         }
         else if (msg == TaskbarCreatedMessage) AddIcon(); // 资源管理器重启后托盘图标会丢失，需要重新添加
         else if (msg == ShowWindowMessage) { _open(); return IntPtr.Zero; }
+        else if (msg == StartupLaunchMessage) { StartupLaunchRequested?.Invoke(); return IntPtr.Zero; }
         else if (msg == WM_WTSSESSION_CHANGE)
         {
             var reason = unchecked((uint)wParam.ToInt64());

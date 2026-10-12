@@ -14,16 +14,19 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var startupLaunch = Environment.GetCommandLineArgs().Contains(StartupService.StartupArgument)
+            || Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs().Kind
+                == Microsoft.Windows.AppLifecycle.ExtendedActivationKind.StartupTask;
         // 只允许一个实例：重复启动时通知已运行的实例显示窗口，然后自己退出。
         _singleInstance = new Mutex(true, "AreYouThere.SingleInstance", out var isFirst);
         if (!isFirst)
         {
-            PostMessage(HWND_BROADCAST, TrayService.ShowWindowMessage, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(HWND_BROADCAST, startupLaunch ? TrayService.StartupLaunchMessage : TrayService.ShowWindowMessage, IntPtr.Zero, IntPtr.Zero);
             Exit();
             return;
         }
 
-        Window = new MainWindow();
+        Window = new MainWindow(startupLaunch);
         Window.SetInitialSize();
         Window.Activate();
     }

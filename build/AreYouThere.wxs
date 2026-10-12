@@ -20,12 +20,25 @@
     <Icon Id="AppIcon" SourceFile="$(IconFile)" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/nathanatgit/AreYouThere" />
+    <!-- 不创建系统还原点：否则安装/卸载开始时会卡住几十秒才弹出 UAC -->
+    <Property Id="MSIFASTINSTALL" Value="1" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="AreYouThere">
         <Files Include="$(SourceDir)\**" />
       </Directory>
     </StandardDirectory>
+
+    <!-- 卸载（非升级）时删除程序在 HKCU\...\Run 注册的开机启动项。只删除指向本安装目录的值，
+         不影响便携版；只清理执行卸载的用户；升级时保留，因为安装路径不变。
+         安装程序在服务会话中执行：那里 HKCU 不指向用户的注册表，所以以 SYSTEM 身份访问 HKU\[UserSID]；
+         也不能运行 AreYouThere.exe 本身，WinUI 程序在那里无法启动。 -->
+    <CustomAction Id="RemoveStartupEntry" Directory="SystemFolder"
+                  ExeCommand="&quot;[SystemFolder]cmd.exe&quot; /d /c reg query HKU\[UserSID]\Software\Microsoft\Windows\CurrentVersion\Run /v AreYouThere | findstr /i /c:&quot;[INSTALLFOLDER]AreYouThere.exe&quot; &amp;&amp; reg delete HKU\[UserSID]\Software\Microsoft\Windows\CurrentVersion\Run /v AreYouThere /f"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="RemoveStartupEntry" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
 
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuShortcut">
