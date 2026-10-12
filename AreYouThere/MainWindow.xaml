@@ -3,12 +3,72 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:AreYouThere"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d">
   <!-- 界面文字都在 MainWindow.xaml.cs 的 Localize() 里按当前语言设置 -->
+  <!-- Windows 11 上用 Mica 背景（代码里把这个背景换成透明）；Windows 10 用普通的浅色/深色背景 -->
+  <Grid x:Name="WindowRoot" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid.Resources>
+      <!--
+        文字层级（同一层级同一字号，层级越高字号越大）：
+        区域标题 20 粗体 → 卡片标题 16 → 卡片内容 14 → 灰色说明 12（系统次要文字颜色）
+      -->
+      <Style x:Key="SectionHeader" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="1,24,0,8" />
+      </Style>
+      <Style x:Key="CardTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+      <Style x:Key="CardContent" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+      <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="16" />
+      </Style>
+      <Style x:Key="Hint" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+    </Grid.Resources>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- 沉浸式标题栏：内容延伸到标题栏，最小化/最大化/关闭按钮仍由系统绘制（Windows 10 同样适用） -->
+    <Grid x:Name="AppTitleBar" Height="48" Padding="16,0,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+        <Image Source="ms-appx:///Assets/logo.png" Width="16" Height="16" />
+        <TextBlock x:Name="AppTitleBarText" FontSize="12" VerticalAlignment="Center" />
+      </StackPanel>
+    </Grid>
+
+    <!-- 大标题固定在标题栏下方，不随内容滚动 -->
+    <Border Grid.Row="1" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+      <StackPanel MaxWidth="1100" Padding="32,4,32,16" Orientation="Horizontal" Spacing="14">
+        <Image Source="ms-appx:///Assets/logo.png" Width="48" Height="48" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="AppTitleText" FontSize="30" FontWeight="SemiBold" />
+          <TextBlock x:Name="AppSubtitleText" Text="AreYouThere" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
   <!-- 启动时把键盘焦点放在滚动区域，避免焦点落在摄像头开关上被误按空格开启 -->
-  <ScrollViewer x:Name="RootScroll" IsTabStop="True">
-    <!-- 宽窗口：设置在左、小预览在右；窄窗口：单列，预览在下方。切换逻辑见 LayoutRoot_SizeChanged -->
-    <Grid x:Name="LayoutRoot" Padding="32" MaxWidth="1100" ColumnSpacing="32" RowSpacing="18"
+  <ScrollViewer x:Name="RootScroll" Grid.Row="2" IsTabStop="True">
+    <!-- 宽窗口：设置在左、预览在右；窄窗口：单列，预览插在“检测”之后。切换逻辑见 LayoutRoot_SizeChanged -->
+    <Grid x:Name="LayoutRoot" Padding="32,20,32,32" MaxWidth="1100" ColumnSpacing="32" RowSpacing="18"
           SizeChanged="LayoutRoot_SizeChanged">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*" />
@@ -20,92 +80,170 @@
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
+      <!-- 简介和两条可关闭的提示 -->
       <StackPanel Grid.ColumnSpan="2" Spacing="12">
-        <StackPanel Orientation="Horizontal" Spacing="14">
-          <Image Source="ms-appx:///Assets/logo.png" Width="48" Height="48" />
-          <StackPanel VerticalAlignment="Center">
-            <TextBlock x:Name="AppTitleText" FontSize="30" FontWeight="SemiBold" />
-            <TextBlock x:Name="AppSubtitleText" Text="AreYouThere" Opacity="0.6" />
-          </StackPanel>
-        </StackPanel>
-        <TextBlock x:Name="IntroText" Opacity="0.75" TextWrapping="Wrap" />
-        <InfoBar x:Name="OfflineBar" IsOpen="True" Severity="Success" IsClosable="False" />
+        <TextBlock x:Name="IntroText" Style="{StaticResource CardContent}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <InfoBar x:Name="OfflineBar" IsOpen="True" Severity="Success" IsClosable="True" Closed="NoticeBar_Closed" />
+        <InfoBar x:Name="PrivacyBar" IsOpen="True" Severity="Warning" IsClosable="True" Closed="NoticeBar_Closed" />
       </StackPanel>
 
-      <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="18">
-        <InfoBar x:Name="PrivacyBar" IsOpen="True" Severity="Warning" IsClosable="False" />
+      <!-- 每个设置一行卡片（PowerToys / Windows 设置风格）：左边图标、标题、说明，右边是控件 -->
+      <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="4">
         <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" />
         <InfoBar x:Name="CameraProblem" IsOpen="False" Visibility="Collapsed" Severity="Error" IsClosable="False">
           <InfoBar.ActionButton>
             <Button x:Name="CameraPrivacyButton" Click="CameraPrivacyButton_Click" />
           </InfoBar.ActionButton>
         </InfoBar>
-        <StackPanel Spacing="8">
-          <TextBlock x:Name="CameraLabel" />
+
+        <!-- 状态：最常看的放最上面 -->
+        <toolkit:SettingsCard x:Name="EnabledCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE77B;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description>
+            <StackPanel Spacing="2">
+              <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
+              <TextBlock x:Name="PowerSummaryText" TextWrapping="Wrap" />
+              <TextBlock x:Name="TrayHintText" TextWrapping="Wrap" />
+            </StackPanel>
+          </toolkit:SettingsCard.Description>
+          <ToggleSwitch x:Name="EnabledSwitch" Toggled="EnabledSwitch_Toggled" />
+        </toolkit:SettingsCard>
+
+        <TextBlock x:Name="DetectionHeader" Style="{StaticResource SectionHeader}" />
+        <toolkit:SettingsCard x:Name="CameraCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE722;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description><TextBlock x:Name="CameraHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <ComboBox x:Name="CameraBox" MinWidth="300" MaxWidth="420"
-                      SelectionChanged="CameraBox_SelectionChanged" />
+            <ComboBox x:Name="CameraBox" MinWidth="180" MaxWidth="240" SelectionChanged="CameraBox_SelectionChanged" />
             <Button x:Name="RefreshCamerasButton" Click="RefreshCameras_Click" />
           </StackPanel>
-          <TextBlock x:Name="CameraHintText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-        </StackPanel>
-        <ToggleSwitch x:Name="EnabledSwitch" Toggled="EnabledSwitch_Toggled" />
-        <ToggleSwitch x:Name="StartupSwitch" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
-        <TextBlock x:Name="StartupStatusText" Opacity="0.65" TextWrapping="Wrap" />
-        <Button x:Name="RestoreStartupReminderButton" IsEnabled="False" Click="RestoreStartupReminder_Click" />
-        <ToggleSwitch x:Name="PreviewSwitch" IsOn="True" Toggled="PreviewSwitch_Toggled" />
-        <StackPanel Spacing="8">
-          <TextBlock x:Name="IntervalLabel" />
-          <ComboBox x:Name="IntervalBox" SelectedIndex="2" SelectionChanged="IntervalBox_SelectionChanged" Width="220">
-            <ComboBoxItem Tag="15" />
-            <ComboBoxItem Tag="30" />
-            <ComboBoxItem Tag="60" />
-            <ComboBoxItem Tag="120" />
-            <ComboBoxItem Tag="300" />
-          </ComboBox>
-        </StackPanel>
-        <StackPanel Spacing="8">
-          <RadioButtons x:Name="AwayModeButtons" SelectedIndex="0"
-                        SelectionChanged="AwayModeButtons_SelectionChanged">
-            <RadioButton x:Name="AwayFollowOption" />
-            <RadioButton x:Name="AwayLockOption" />
+        </toolkit:SettingsCard>
+        <toolkit:SettingsCard x:Name="SmartCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description><TextBlock x:Name="SmartHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+          <ToggleSwitch x:Name="SmartSwitch" Toggled="SmartSwitch_Toggled" />
+        </toolkit:SettingsCard>
+        <!-- 紧跟智能检测：开启时它的含义是“停止操作多久后检测”。点开后滚动选择时 / 分 / 秒 -->
+        <toolkit:SettingsCard x:Name="IntervalCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE823;" /></toolkit:SettingsCard.HeaderIcon>
+          <local:DurationPicker x:Name="IntervalPicker" />
+        </toolkit:SettingsCard>
+        <!-- 坐姿检测：展开后设置坐姿检测间隔 -->
+        <toolkit:SettingsExpander x:Name="PostureCard" FontSize="16">
+          <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7BE;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Description><TextBlock x:Name="PostureHintText" TextWrapping="Wrap" /></toolkit:SettingsExpander.Description>
+          <ToggleSwitch x:Name="PostureSwitch" Toggled="PostureSwitch_Toggled" />
+          <toolkit:SettingsExpander.Items>
+            <!-- 跟随：只在在场检测时顺便看坐姿；自定义：按自己的间隔检测，打字时也照常检测 -->
+            <toolkit:SettingsCard x:Name="PostureIntervalPanel" FontSize="16" ContentAlignment="Left">
+              <StackPanel Spacing="8">
+                <RadioButtons x:Name="PostureIntervalModeButtons" SelectionChanged="PostureIntervalMode_SelectionChanged">
+                  <RadioButton x:Name="PostureFollowOption">
+                    <!-- 智能检测说明紧跟在“跟随”选项下面，因为它只影响这个选项 -->
+                    <StackPanel Spacing="2">
+                      <TextBlock x:Name="PostureFollowText" TextWrapping="Wrap" />
+                      <TextBlock x:Name="PostureFollowNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+                    </StackPanel>
+                  </RadioButton>
+                  <RadioButton x:Name="PostureCustomOption" />
+                </RadioButtons>
+                <local:DurationPicker x:Name="PostureIntervalPicker" Visibility="Collapsed" />
+              </StackPanel>
+            </toolkit:SettingsCard>
+          </toolkit:SettingsExpander.Items>
+        </toolkit:SettingsExpander>
+
+        <TextBlock x:Name="AwayHeader" Style="{StaticResource SectionHeader}" />
+        <toolkit:SettingsCard x:Name="AwayCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
+          <!-- 标题、选项在上，说明文字放在最后 -->
+          <StackPanel Spacing="8">
+            <RadioButtons x:Name="AwayModeButtons" HorizontalAlignment="Left" SelectedIndex="0" SelectionChanged="AwayModeButtons_SelectionChanged">
+              <RadioButton x:Name="AwayFollowOption" />
+              <RadioButton x:Name="AwayLockOption" />
+            </RadioButtons>
+            <TextBlock x:Name="PolicyText" Style="{StaticResource Hint}" />
+          </StackPanel>
+        </toolkit:SettingsCard>
+        <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16" Visibility="Collapsed">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></toolkit:SettingsCard.HeaderIcon>
+          <!-- 立即 / 一个在场检测间隔 / 自定义（自定义时显示时间选择器） -->
+          <StackPanel Spacing="8" HorizontalAlignment="Right">
+            <ComboBox x:Name="LockDelayBox" MinWidth="200" HorizontalAlignment="Right" SelectionChanged="LockDelayBox_SelectionChanged">
+              <ComboBoxItem Tag="immediate" />
+              <ComboBoxItem Tag="interval" />
+              <ComboBoxItem Tag="custom" />
+            </ComboBox>
+            <local:DurationPicker x:Name="LockDelayPicker" HorizontalAlignment="Right" Visibility="Collapsed" />
+          </StackPanel>
+        </toolkit:SettingsCard>
+
+        <TextBlock x:Name="OtherHeader" Style="{StaticResource SectionHeader}" />
+        <toolkit:SettingsCard x:Name="StartupCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE7E8;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description>
+            <StackPanel Spacing="6">
+              <TextBlock x:Name="StartupStatusText" TextWrapping="Wrap" />
+              <!-- 只有永久关闭了开机提醒时才显示 -->
+              <Button x:Name="RestoreStartupReminderButton" Visibility="Collapsed" Click="RestoreStartupReminder_Click" />
+            </StackPanel>
+          </toolkit:SettingsCard.Description>
+          <ToggleSwitch x:Name="StartupSwitch" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
+        </toolkit:SettingsCard>
+        <!-- 托盘通知：默认在全屏应用（如游戏）前台时不弹，避免打断 -->
+        <toolkit:SettingsCard x:Name="NotificationCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEA8F;" /></toolkit:SettingsCard.HeaderIcon>
+          <RadioButtons x:Name="NotificationModeButtons" HorizontalAlignment="Left" SelectionChanged="NotificationMode_SelectionChanged">
+            <RadioButton x:Name="NotifyQuietOption" />
+            <RadioButton x:Name="NotifyNeverOption" />
+            <RadioButton x:Name="NotifyAlwaysOption" />
           </RadioButtons>
-          <ComboBox x:Name="LockDelayBox" Width="260" SelectedIndex="2" Visibility="Collapsed"
-                    SelectionChanged="LockDelayBox_SelectionChanged">
-            <ComboBoxItem Tag="0" />
-            <ComboBoxItem Tag="15" />
-            <ComboBoxItem Tag="30" />
-            <ComboBoxItem Tag="60" />
-            <ComboBoxItem Tag="120" />
-            <ComboBoxItem Tag="-1" />
+        </toolkit:SettingsCard>
+        <toolkit:SettingsCard x:Name="LanguageCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xF2B7;" /></toolkit:SettingsCard.HeaderIcon>
+          <!-- 语言名称用各自的语言写，看不懂当前语言的人也能找到 -->
+          <ComboBox x:Name="LanguageBox" MinWidth="200" SelectionChanged="LanguageBox_SelectionChanged">
+            <ComboBoxItem Tag="system" />
+            <ComboBoxItem Content="简体中文" Tag="zh" />
+            <ComboBoxItem Content="English" Tag="en" />
           </ComboBox>
-          <TextBlock x:Name="PolicyText" Opacity="0.75" TextWrapping="Wrap" />
-        </StackPanel>
-        <TextBlock x:Name="StatusText" Opacity="0.75" TextWrapping="Wrap" />
-        <TextBlock x:Name="TrayHintText" TextWrapping="Wrap" Opacity="0.65" />
-        <TextBlock x:Name="PowerSummaryText" TextWrapping="Wrap" Opacity="0.75" />
-        <!-- 语言名称用各自的语言写，看不懂当前语言的人也能找到 -->
-        <ComboBox x:Name="LanguageBox" Width="220" SelectionChanged="LanguageBox_SelectionChanged">
-          <ComboBoxItem Tag="system" />
-          <ComboBoxItem Content="简体中文" Tag="zh" />
-          <ComboBoxItem Content="English" Tag="en" />
-        </ComboBox>
-        <StackPanel Spacing="4" Margin="0,8,0,0">
-          <TextBlock x:Name="AboutHeader" FontWeight="SemiBold" />
-          <TextBlock x:Name="AboutText" Opacity="0.75" TextWrapping="Wrap" />
-          <!-- 链接只是交给系统浏览器打开，程序本身仍然不联网 -->
-          <HyperlinkButton x:Name="RepoLink" Padding="0" NavigateUri="https://github.com/nathanatgit/AreYouThere">
-            <TextBlock x:Name="RepoLinkText" TextWrapping="Wrap" />
-          </HyperlinkButton>
-        </StackPanel>
+        </toolkit:SettingsCard>
+        <toolkit:SettingsCard x:Name="ThemeCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE790;" /></toolkit:SettingsCard.HeaderIcon>
+          <ComboBox x:Name="ThemeBox" MinWidth="200" SelectionChanged="ThemeBox_SelectionChanged">
+            <ComboBoxItem />
+            <ComboBoxItem />
+            <ComboBoxItem />
+          </ComboBox>
+        </toolkit:SettingsCard>
+        <toolkit:SettingsCard x:Name="AboutCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE946;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description>
+            <StackPanel Spacing="2">
+              <TextBlock x:Name="AboutText" TextWrapping="Wrap" />
+              <!-- 链接只是交给系统浏览器打开，程序本身仍然不联网 -->
+              <HyperlinkButton x:Name="RepoLink" Padding="0" NavigateUri="https://github.com/nathanatgit/AreYouThere">
+                <TextBlock x:Name="RepoLinkText" TextWrapping="Wrap" />
+              </HyperlinkButton>
+              <!-- 关掉顶部提示后才显示 -->
+              <HyperlinkButton x:Name="ShowNoticesLink" Padding="0" Visibility="Collapsed" Click="ShowNoticesLink_Click" />
+            </StackPanel>
+          </toolkit:SettingsCard.Description>
+        </toolkit:SettingsCard>
       </StackPanel>
 
       <Border x:Name="PreviewCard" Grid.Row="1" Grid.Column="1" Width="320" VerticalAlignment="Top"
-              Background="#14000000" CornerRadius="8" Padding="12">
+              Style="{StaticResource Card}" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock x:Name="PreviewTitle" FontSize="16" FontWeight="SemiBold" />
+          <Grid>
+            <TextBlock x:Name="PreviewTitle" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+            <ToggleSwitch x:Name="PreviewSwitch" IsOn="True" HorizontalAlignment="Right" MinWidth="0"
+                          Toggled="PreviewSwitch_Toggled" />
+          </Grid>
+          <!-- 有些摄像头送来的画面是横的或倒的：转到预览里的人是正的为止，检测也按这个方向进行 -->
+          <Button x:Name="RotateButton" Click="RotateButton_Click" HorizontalAlignment="Stretch" />
           <Grid x:Name="PreviewArea" Height="180" Background="#22000000" CornerRadius="6">
-            <TextBlock x:Name="PreviewPlaceholder" Opacity="0.5"
+            <TextBlock x:Name="PreviewPlaceholder" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
             <!-- Viewbox 等比缩放：内部按摄像头原始像素布局，人脸框坐标无需换算 -->
             <Viewbox>
@@ -116,15 +254,25 @@
               </Grid>
             </Viewbox>
           </Grid>
-          <TextBlock x:Name="CameraStatusText" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock x:Name="FaceStatusText" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock x:Name="PreviewNoteText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-          <Slider x:Name="FaceAreaSlider" Minimum="0" Maximum="50" StepFrequency="0.5"
+          <TextBlock x:Name="CameraStatusText" Style="{StaticResource CardContent}" />
+          <!-- 只在预览真正显示画面时出现（见 Presence_FrameReady / ClearPreview） -->
+          <TextBlock x:Name="PreviewNoteText" Style="{StaticResource Hint}" Visibility="Collapsed" />
+          <TextBlock x:Name="FaceStatusText" Style="{StaticResource CardContent}" />
+          <Slider x:Name="FaceAreaSlider" Margin="0,8,0,0" Minimum="0" Maximum="50" StepFrequency="0.5"
                   TickFrequency="5" TickPlacement="Outside" ValueChanged="FaceAreaSlider_ValueChanged" />
-          <TextBlock x:Name="FaceAreaText" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock x:Name="FaceAreaHintText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+          <TextBlock x:Name="FaceAreaText" Style="{StaticResource CardContent}" />
+          <!-- 坐姿检测打开时才显示：预览里的橙色虚线就是坐姿线 -->
+          <StackPanel x:Name="PosturePanel" Spacing="8" Margin="0,8,0,0" Visibility="Collapsed">
+            <Slider x:Name="PostureSlider" Minimum="10" Maximum="80" StepFrequency="1"
+                    TickFrequency="10" TickPlacement="Outside" ValueChanged="PostureSlider_ValueChanged" />
+            <TextBlock x:Name="PostureLineText" Style="{StaticResource CardContent}" />
+            <Slider x:Name="PostureAreaSlider" Margin="0,8,0,0" Minimum="5" Maximum="60" StepFrequency="0.5"
+                    TickFrequency="5" TickPlacement="Outside" ValueChanged="PostureAreaSlider_ValueChanged" />
+            <TextBlock x:Name="PostureAreaText" Style="{StaticResource CardContent}" />
+          </StackPanel>
         </StackPanel>
       </Border>
     </Grid>
   </ScrollViewer>
+  </Grid>
 </Window>

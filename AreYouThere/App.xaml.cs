@@ -10,7 +10,13 @@ public partial class App : Application
 
     public static MainWindow? Window { get; private set; }
 
-    public App() => InitializeComponent();
+    public App()
+    {
+        // 应用级主题只能在启动时设置；对话框、提示等弹出层和代码里取的资源都按它来。运行中切换由窗口根元素处理。
+        var theme = AppSettings.Load().Theme;
+        if (theme != AppTheme.System) RequestedTheme = theme == AppTheme.Dark ? ApplicationTheme.Dark : ApplicationTheme.Light;
+        InitializeComponent();
+    }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {

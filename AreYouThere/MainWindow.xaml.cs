@@ -28,6 +28,14 @@ public sealed partial class MainWindow : Window
         L.SetLanguage(_settings.Language); // 托盘、对话框等都按这里选定的语言
         _trayStatus = L.T("未启用", "Off");
         InitializeComponent();
+        // Windows 11 用 Mica 背景；Windows 10 不支持，保留 XAML 里的普通主题背景
+        if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
+        {
+            SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
+            WindowRoot.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
+        SetupTitleBar();
+        ApplyTheme();
         Localize();
         StatusText.Text = L.Status(_trayStatus);
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "icon.ico");
@@ -46,6 +54,10 @@ public sealed partial class MainWindow : Window
         _presence.LockCountdownStarted += Presence_LockCountdownStarted;
         _presence.CameraFailed += Presence_CameraFailed;
         _presence.MultipleFacesDetected += Presence_MultipleFacesDetected;
+        _presence.PostureAlert += Presence_PostureAlert;
+        IntervalPicker.ValueChanged += IntervalPicker_ValueChanged;
+        PostureIntervalPicker.ValueChanged += PostureIntervalPicker_ValueChanged;
+        LockDelayPicker.ValueChanged += LockDelayPicker_ValueChanged;
         _cameraCatalog.Changed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = RefreshCamerasAsync());
 
         // 预览只在窗口可见时有意义；窗口隐藏/最小化后让摄像头进入省电的间歇工作模式
@@ -108,10 +120,18 @@ public sealed partial class MainWindow : Window
         var wide = e.NewSize.Width >= 820;
         if (wide == _wideLayout) return;
         _wideLayout = wide;
-        Grid.SetRow(PreviewCard, wide ? 1 : 2);
-        Grid.SetColumn(PreviewCard, wide ? 1 : 0);
+        // 宽窗口：预览在右侧一列；窄窗口：预览插在“检测”和“离开电脑后”之间，紧挨着相关设置
+        if (wide)
+        {
+            if (SettingsPanel.Children.Remove(PreviewCard)) LayoutRoot.Children.Add(PreviewCard);
+            Grid.SetRow(PreviewCard, 1);
+            Grid.SetColumn(PreviewCard, 1);
+        }
+        else if (LayoutRoot.Children.Remove(PreviewCard))
+        {
+            SettingsPanel.Children.Insert(SettingsPanel.Children.IndexOf(AwayHeader), PreviewCard);
+        }
         Grid.SetColumnSpan(SettingsPanel, wide ? 1 : 2);
-        Grid.SetColumnSpan(PreviewCard, wide ? 1 : 2);
         PreviewCard.Width = wide ? 320 : double.NaN;
         PreviewArea.Height = wide ? 180 : 260;
     }
@@ -122,6 +142,8 @@ public sealed partial class MainWindow : Window
     private void Localize()
     {
         Title = L.T("在吗 AreYouThere", "AreYouThere");
+        AppTitleBarText.Text = Title;
+        AboutCard.Header = L.T("关于", "About");
         AppTitleText.Text = L.T("在吗", "AreYouThere");
         AppSubtitleText.Visibility = L.Zh ? Visibility.Visible : Visibility.Collapsed;
         IntroText.Text = L.T("微软官方的“存在感知”(Presence Sensing) 只在部分新款设备上提供。『在吗』是它的轻量替代方案：用普通摄像头判断你是否在电脑前，在的时候阻止 Windows 自动息屏，离开后锁定电脑。",
@@ -133,39 +155,67 @@ public sealed partial class MainWindow : Window
             "Privacy notice: the camera light stays on while the preview is visible and lights up briefly during each background check. Avoid using the camera where privacy is expected, as this may cause concern or disputes. In public places, follow the venue's rules and increase the minimum face size to help filter out passersby. The app detects faces, not identities: another person's face may keep the PC unlocked after you leave.");
         AwakeWarning.Title = L.T("可能存在冲突", "Possible conflict");
         CameraPrivacyButton.Content = L.T("打开摄像头隐私设置", "Open camera privacy settings");
-        CameraLabel.Text = L.T("摄像头", "Camera");
+        CameraCard.Header = L.T("摄像头", "Camera");
         if (_cameras.Count == 0) CameraBox.PlaceholderText = L.T("正在查找摄像头…", "Looking for cameras…");
         RefreshCamerasButton.Content = L.T("刷新", "Refresh");
-        CameraHintText.Text = L.T("有些电脑上摄像头名称显示不准确。不确定是哪一个时，可以开启检测并查看预览来确认。",
-            "Camera names aren't always accurate. If you're not sure which one is which, turn on detection and check the preview.");
-        foreach (var toggle in new[] { EnabledSwitch, StartupSwitch, PreviewSwitch })
+        CameraHintText.Text = L.T("名称不准确时，可以开启检测后看预览确认。", "If the names are unclear, turn on detection and check the preview.");
+        DetectionHeader.Text = L.T("检测", "Detection");
+        AwayHeader.Text = L.T("锁定策略", "Lock settings");
+        AwayCard.Header = L.T("离开电脑后", "When you leave");
+        OtherHeader.Text = L.T("其他设置", "Other settings");
+        NotificationCard.Header = L.T("通知", "Notifications");
+        NotifyQuietOption.Content = L.T("全屏应用（如游戏）在前台时不通知", "Hide notifications while using a full-screen app, such as a game");
+        NotifyNeverOption.Content = L.T("永不通知（坐姿提醒等将不会显示）", "Never show notifications (including posture reminders)");
+        NotifyAlwaysOption.Content = L.T("始终通知（可能打断全屏应用）", "Always show notifications (may interrupt full-screen apps)");
+        foreach (var toggle in new[] { EnabledSwitch, StartupSwitch, PreviewSwitch, SmartSwitch, PostureSwitch })
         {
             toggle.OnContent = L.T("开", "On");
             toggle.OffContent = L.T("关", "Off");
         }
-        EnabledSwitch.Header = L.T("启用在场检测", "Presence detection");
-        StartupSwitch.Header = L.T("开机自启动（登录 Windows 后）", "Start when I sign in to Windows");
+        EnabledCard.Header = L.T("启用在场检测", "Presence detection");
+        StartupCard.Header = L.T("登录 Windows 后自动运行", "Start when I sign in to Windows");
         StartupStatusText.Text = DefaultStartupStatus();
         RestoreStartupReminderButton.Content = L.T("恢复每次开机运行提醒", "Restore startup reminders");
-        PreviewSwitch.Header = L.T("显示摄像头预览", "Show camera preview");
-        IntervalLabel.Text = L.T("检测间隔", "Check interval");
-        string[] intervals = L.Zh
-            ? ["15 秒", "30 秒", "1 分钟（默认）", "2 分钟", "5 分钟"]
-            : ["15 seconds", "30 seconds", "1 minute (default)", "2 minutes", "5 minutes"];
-        SetItemTexts(IntervalBox, intervals);
-        AwayModeButtons.Header = L.T("离开电脑后", "When you leave");
+        ToolTipService.SetToolTip(PreviewSwitch, L.T("显示摄像头预览", "Show camera preview"));
+        SmartCard.Header = L.T("智能检测", "Smart detection");
+        SmartHintText.Text = L.T("在操作电脑时（鼠标、键盘操作）不检测，当停止操作后一段时间才启用检测；关闭则按照固定时间检测。",
+            "Presence checks pause while you're using the keyboard or mouse and resume after the idle period you set below. Turn this off to check at a fixed interval.");
+        PostureCard.Header = L.T("坐姿检测", "Posture reminders");
+        PostureHintText.Text = L.T("检测会在发现人脸位置低于坐姿线或者太接近屏幕时发出提醒。",
+            "Reminds you when your face is below the posture line or too close to the screen.");
+        PostureIntervalModeButtons.Header = L.T("坐姿检测间隔", "Posture check interval");
+        PostureFollowText.Text = L.T("跟随在场检测间隔：只在在场检测时顺便检测坐姿", "Check posture during presence checks");
+        PostureCustomOption.Content = L.T("自定义间隔：单独按下方时间检测坐姿", "Custom: check posture on its own schedule");
+        PostureFollowNote.Text = L.T("当前已开启智能检测，持续打字或移动鼠标时不会触发在场检测，因此也不会有检测坐姿提醒。如果需要操作电脑时也提醒，请选择自定义间隔。",
+            "Smart detection pauses presence checks while you're typing or moving the mouse, so posture checks also pause in this mode. Choose a custom interval to keep receiving posture reminders while using the PC.");
+        PostureIntervalPicker.SetLabels(L.T("时", "h"), L.T("分", "min"), L.T("秒", "s"));
+        PostureAreaSlider.Header = HeaderWithHelp(L.T("距离阈值", "Distance threshold"),
+            L.T("人脸区域面积大小，超出此阈值提醒", "A reminder appears when you sit too close"),
+            L.T("调整好坐姿和摄像头位置，滑动距离阈值滑块，直至预览中人脸区域框由橙变绿，更大的距离阈值表示更宽松的检测。",
+                "Sit in your usual position and adjust the camera. Move the distance slider until the box around your face turns from orange to green. A higher threshold lets you sit closer before a reminder appears."));
+        PostureSlider.Header = HeaderWithHelp(L.T("坐姿线高度阈值", "Posture line height"),
+            L.T("从画面底部算起，低于此阈值提醒", "A reminder appears when your face drops below this line"),
+            L.T("调整好坐姿和摄像头位置，滑动坐姿线高度滑块，直至预览中人脸区域框由橙变绿，更低的坐姿线高度阈值表示更宽松的检测。",
+                "Sit upright and adjust the camera. Move the posture line slider until the box around your face turns from orange to green. A lower line lets you sit lower before a reminder appears."));
+        UpdatePostureText();
+        UpdateRotateButton();
+        UpdateIntervalLabel();
+        IntervalPicker.SetLabels(L.T("时", "h"), L.T("分", "min"), L.T("秒", "s"));
         AwayFollowOption.Content = L.T("跟随系统电源策略", "Follow Windows power settings");
         AwayLockOption.Content = L.T("由『在吗』接管：检测到离开后锁定电脑", "Let AreYouThere lock the PC when you leave");
-        LockDelayBox.Header = L.T("锁定时机", "Lock delay after absence is detected");
+        LockDelayCard.Header = L.T("锁定时机", "Lock delay after absence is detected");
         string[] delays = L.Zh
-            ? ["立即锁定", "延迟 15 秒后锁定", "延迟 30 秒后锁定", "延迟 1 分钟后锁定", "延迟 2 分钟后锁定", "延迟一个检测间隔后锁定"]
-            : ["Immediately", "15 seconds", "30 seconds", "1 minute", "2 minutes", "Same as check interval"];
+            ? ["立即锁定", "延迟一个在场检测间隔后锁定", "自定义"]
+            : ["Immediately", "After one presence check interval", "Custom"];
         SetItemTexts(LockDelayBox, delays);
-        TrayHintText.Text = L.T("关闭此窗口后程序会继续在右下角托盘运行。单击托盘图标打开窗口，右键可启用/关闭或退出。",
-            "Closing this window keeps the app running in the system tray. Click the tray icon to open this window; right-click it to turn detection on or off, or to exit.");
-        LanguageBox.Header = L.T("语言", "Language");
+        LockDelayPicker.SetLabels(L.T("时", "h"), L.T("分", "min"), L.T("秒", "s"));
+        TrayHintText.Text = L.T("关闭窗口后在托盘继续运行；右键托盘图标可启用/关闭或退出。",
+            "Closing the window keeps the app running in the tray; right-click the tray icon to turn detection on or off, or to exit.");
+        LanguageCard.Header = L.T("语言", "Language");
+        ThemeCard.Header = L.T("主题", "Theme");
+        SetItemTexts(ThemeBox, L.Zh ? ["跟随系统", "浅色", "深色"] : ["System default", "Light", "Dark"]);
         ((ComboBoxItem)LanguageBox.Items[0]).Content = L.T("跟随系统", "System default");
-        AboutHeader.Text = L.T("关于", "About");
+        ShowNoticesLink.Content = L.T("重新显示已关闭的提示", "Show dismissed notices again");
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
         AboutText.Text = L.T($"在吗 AreYouThere v{version} · MIT 许可证 · 开源免费", $"AreYouThere v{version} · MIT License · Free and open source");
         ToolTipService.SetToolTip(RepoLink, L.T("在浏览器中打开", "Open in browser"));
@@ -175,10 +225,50 @@ public sealed partial class MainWindow : Window
         CameraStatusText.Text = L.T("摄像头状态：尚未打开", "Camera: not started");
         FaceStatusText.Text = L.T("人脸状态：等待检测", "Face detection: waiting for a check");
         PreviewNoteText.Text = L.T("预览仅用于本地调整位置，不保存或上传图像。", "The preview is only for positioning the camera. No images are saved or uploaded.");
-        FaceAreaSlider.Header = L.T("人脸最小面积（占画面）", "Minimum face size (% of image area)");
-        FaceAreaHintText.Text = L.T("只有面积不小于此阈值的人脸（绿框）才算你在电脑前；远处的人、路过的人或墙上的照片通常较小（灰框），会被忽略。请先调整摄像头，坐在平时的位置查看绿框上的百分比，把阈值设为略低于它（例如显示 8% 时设为 4–5%）。阈值太小时，在公共场所可能把附近的其他人当成你，你离开后电脑不会锁定；太大时你稍微坐远就会被当成离开。",
-            "A face must cover at least this percentage of the image to count as someone being present (green box). Smaller faces are ignored (gray box). The app does not identify you or distinguish a real face from a face in a photo. Position the camera, sit in your usual spot, and set the minimum slightly below the percentage shown above your face. For example, if it shows 8%, try 4–5%. If the minimum is too low, other people's faces may keep the PC unlocked after you leave. If it is too high, leaning back may make the app think you have left.");
+        FaceAreaSlider.Header = HeaderWithHelp(L.T("人脸区域识别阈值", "Face detection threshold"),
+            L.T("人脸区域占画面的百分比，低于此阈值视为离开", "Faces smaller than this are ignored"),
+            L.T("调整好坐姿和摄像头位置，把阈值设为略低于预览中的百分比。面积大于此阈值的人脸才算你在电脑前；太小的人脸，会被忽略。在公共场合请稍微调大此阈值避免误认路人，导致自动锁定失效。",
+                "Sit in your usual position and adjust the camera. Set the threshold slightly below the percentage shown above your face in the preview. Smaller faces are ignored. In public places, increase the threshold to help filter out passersby, whose faces could otherwise keep the PC unlocked after you leave."));
     }
+
+    /// <summary>
+    /// 滑块标题：第一行标题 + “如何设置”，第二行小字说明。
+    /// “如何设置”悬停显示提示，点击弹出同样的说明（触摸和键盘也能看到）。
+    /// </summary>
+    private StackPanel HeaderWithHelp(string title, string subtitle, string help)
+    {
+        var link = new HyperlinkButton
+        {
+            Content = L.T("如何设置", "How to adjust"), FontSize = 12, Padding = new Thickness(4, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        // 提示和弹出层不会继承窗口里选的主题，显示前按链接当前的主题设置
+        var tip = new ToolTip { Content = new TextBlock { Text = help, TextWrapping = TextWrapping.Wrap } };
+        link.PointerEntered += (_, _) => tip.RequestedTheme = link.ActualTheme;
+        ToolTipService.SetToolTip(link, tip);
+        link.Click += (_, _) =>
+        {
+            var style = new Style(typeof(FlyoutPresenter));
+            style.Setters.Add(new Setter(FrameworkElement.RequestedThemeProperty, link.ActualTheme));
+            new Flyout
+            {
+                Content = new TextBlock { Text = help, TextWrapping = TextWrapping.Wrap, MaxWidth = 300 },
+                FlyoutPresenterStyle = style
+            }.ShowAt(link);
+        };
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        // 与设置卡片同一层级：标题 16、说明 12（灰色），样式在 MainWindow.xaml 里统一定义
+        titleRow.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center, Style = (Style)WindowRoot.Resources["CardTitle"] });
+        titleRow.Children.Add(link);
+        var header = new StackPanel { Spacing = 2 };
+        header.Children.Add(titleRow);
+        header.Children.Add(new TextBlock { Text = subtitle, Style = (Style)WindowRoot.Resources["Hint"] });
+        return header;
+    }
+
+    private void UpdateIntervalLabel() => IntervalCard.Header = _settings.SmartDetection
+        ? L.T("停止操作多久后检测", "Start checking after this idle period")
+        : L.T("检测间隔", "Check interval");
 
     private static void SetItemTexts(ComboBox box, string[] texts)
     {
@@ -188,8 +278,22 @@ public sealed partial class MainWindow : Window
     private string DefaultStartupStatus() => _settings.SkipStartupReminder
         ? L.T("开机运行提醒已永久关闭；以后登录后会自动检测。可点击“恢复每次开机运行提醒”重新开启。",
             "Startup reminders are off. If startup is enabled, detection begins automatically when you sign in. Click \"Restore startup reminders\" to show the reminder again.")
-        : L.T("默认关闭。启用前需确认隐私提醒；每次随开机启动都需点击“确定”，之后才开启检测并驻留托盘。",
-            "Startup is off by default. Enabling it requires your agreement to the privacy notice. At each sign-in, click OK on the startup reminder to begin detection. The app then runs in the system tray.");
+        : L.T("启用前需确认隐私提醒；每次登录后点击“确定”才开始检测。",
+            "To enable startup, confirm the privacy notice. At each sign-in, click OK on the reminder to start detection.");
+
+    private void ShowRestoreButton(bool show) =>
+        RestoreStartupReminderButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+
+    private void UpdateShowNoticesLink() => ShowNoticesLink.Visibility =
+        _settings.HideOfflineNotice || _settings.HidePrivacyNotice ? Visibility.Visible : Visibility.Collapsed;
+
+    private void ShowNoticesLink_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.HideOfflineNotice = _settings.HidePrivacyNotice = false;
+        _settings.Save();
+        OfflineBar.IsOpen = PrivacyBar.IsOpen = true;
+        UpdateShowNoticesLink();
+    }
 
     private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -226,7 +330,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             _showingStartupReminder = false;
-            RestoreStartupReminderButton.IsEnabled = _settings.SkipStartupReminder;
+            ShowRestoreButton(_settings.SkipStartupReminder);
             if (_settings.SkipStartupReminder) StartupStatusText.Text = DefaultStartupStatus();
         }
     }
@@ -237,7 +341,7 @@ public sealed partial class MainWindow : Window
         try
         {
             _settings.SaveOrThrow();
-            RestoreStartupReminderButton.IsEnabled = false;
+            ShowRestoreButton(false);
             StartupStatusText.Text = L.T("已恢复提醒：每次登录后需点击“确定”，之后才开始检测。",
                 "Reminders restored: at each sign-in you must click OK before detection starts.");
         }
@@ -290,14 +394,14 @@ public sealed partial class MainWindow : Window
                         + "即使完全离线、不保存或上传画面，摄像头指示灯仍可能让他人以为正在录像。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。\n\n"
                         + "你可以随时关闭此选项取消自启动，关闭检测停用摄像头，或通过托盘菜单退出。确认表示你已了解并同意上述行为。",
                         "AreYouThere will run automatically when you sign in to Windows. Each time, a startup reminder asks you to click OK before presence detection begins. The app then runs in the system tray.\n\n"
-                        + $"With your current settings, the camera turns on every {PowerPolicy.Describe(TimeSpan.FromSeconds(IntervalSeconds))} for a check, and its indicator light comes on. The camera stays on while the preview is visible. During the lock countdown, the app may check more frequently. Future startup launches use your latest settings.\n\n"
+                        + $"Your presence check interval is {PowerPolicy.Describe(TimeSpan.FromSeconds(IntervalSeconds))}. The camera light comes on whenever the camera is in use. If smart detection is enabled, presence checks pause while you're using the keyboard or mouse. The preview, separate posture checks, or a lock countdown may keep the camera on or use it more often. Future startup launches use your latest settings.\n\n"
                         + "Even though the app works offline and never saves or uploads images, the camera light may make others think you are recording. Avoid using the camera where privacy is expected. In public places, follow the venue's rules and increase the minimum face size to help filter out passersby. The app detects faces, not identities: another person's face may keep the PC unlocked after you leave.\n\n"
                         + "You can disable startup at any time, turn off detection to stop camera use, or exit using the tray menu. By enabling startup, you confirm that you understand and agree to this automatic camera use."),
                     PrimaryButtonText = L.T("我已了解，启用开机自启动", "I understand — enable startup"),
                     CloseButtonText = L.T("取消", "Cancel"),
                     DefaultButton = ContentDialogButton.Close
                 };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                if (await Themed(dialog, RootScroll.XamlRoot).ShowAsync() != ContentDialogResult.Primary)
                 {
                     SetStartupSwitch(false);
                     return;
@@ -308,7 +412,7 @@ public sealed partial class MainWindow : Window
             if (enable)
             {
                 _settings.SkipStartupReminder = false;
-                RestoreStartupReminderButton.IsEnabled = false;
+                ShowRestoreButton(false);
             }
             _settings.SaveOrThrow();
             await StartupService.SetEnabledAsync(enable);
@@ -322,7 +426,7 @@ public sealed partial class MainWindow : Window
         {
             _settings.StartupConsent = previousConsent;
             _settings.SkipStartupReminder = previousSkipReminder;
-            RestoreStartupReminderButton.IsEnabled = previousSkipReminder;
+            ShowRestoreButton(previousSkipReminder);
             _settings.Save();
             SetStartupSwitch(previousConsent && !enable);
             StartupStatusText.Text = L.T($"更改开机自启动失败：{ex.Message}", $"Couldn't change the startup setting: {ex.Message}");
@@ -336,13 +440,36 @@ public sealed partial class MainWindow : Window
 
     private void ApplySettings()
     {
-        SelectByTag(IntervalBox, _settings.IntervalSeconds.ToString());
+        IntervalPicker.Value = TimeSpan.FromSeconds(_settings.IntervalSeconds);
         PreviewSwitch.IsOn = _settings.PreviewEnabled;
-        RestoreStartupReminderButton.IsEnabled = _settings.SkipStartupReminder;
+        NotificationModeButtons.SelectedIndex = (int)_settings.Notifications;
+        ThemeBox.SelectedIndex = (int)_settings.Theme;
+        OfflineBar.IsOpen = !_settings.HideOfflineNotice;
+        PrivacyBar.IsOpen = !_settings.HidePrivacyNotice;
+        UpdateShowNoticesLink();
+        SmartSwitch.IsOn = _settings.SmartDetection;
+        _presence.SmartDetection = _settings.SmartDetection;
+        PostureSwitch.IsOn = _settings.PostureCheck;
+        _presence.PostureCheck = _settings.PostureCheck;
+        PostureSlider.Value = Math.Clamp(_settings.PostureLineFromBottomPercent, PostureSlider.Minimum, PostureSlider.Maximum);
+        _presence.PostureLinePercent = PostureSlider.Value;
+        PostureAreaSlider.Value = Math.Clamp(_settings.PostureMaxAreaPercent, PostureAreaSlider.Minimum, PostureAreaSlider.Maximum);
+        _presence.PostureMaxAreaPercent = PostureAreaSlider.Value;
+        PostureIntervalModeButtons.SelectedIndex = _settings.PostureFollowDetection ? 0 : 1;
+        PostureIntervalPicker.Value = TimeSpan.FromSeconds(_settings.PostureIntervalSeconds);
+        ApplyPostureInterval();
+        UpdatePostureVisibility();
+        UpdatePostureText();
+        UpdateIntervalLabel();
+        ShowRestoreButton(_settings.SkipStartupReminder);
         SelectByTag(LanguageBox, _settings.Language ?? "system");
         AwayModeButtons.SelectedIndex = _settings.LockWhenAway ? 1 : 0;
-        SelectByTag(LockDelayBox, _settings.LockDelaySeconds.ToString());
-        LockDelayBox.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
+        // 旧版本的固定选项（15 秒、30 秒……）按自定义时长处理
+        if (_settings.LockDelaySeconds > 0) _settings.LockDelayCustomSeconds = (uint)_settings.LockDelaySeconds;
+        SelectByTag(LockDelayBox, _settings.LockDelaySeconds switch { 0 => "immediate", < 0 => "interval", _ => "custom" });
+        LockDelayPicker.Value = TimeSpan.FromSeconds(_settings.LockDelayCustomSeconds);
+        LockDelayPicker.Visibility = _settings.LockDelaySeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
+        LockDelayCard.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
         _presence.LockWhenAway = _settings.LockWhenAway;
         _presence.LockDelay = _settings.LockDelaySeconds < 0 ? null : TimeSpan.FromSeconds(_settings.LockDelaySeconds);
         FaceAreaSlider.Value = Math.Clamp(_settings.MinFaceAreaPercent, FaceAreaSlider.Minimum, FaceAreaSlider.Maximum);
@@ -367,7 +494,7 @@ public sealed partial class MainWindow : Window
 
     private void Presence_MultipleFacesDetected(object? sender, int count)
     {
-        DispatcherQueue.TryEnqueue(() => _tray.ShowBalloon(L.T("『在吗』检测到多张近处人脸", "Multiple faces detected"),
+        DispatcherQueue.TryEnqueue(() => Notify(L.T("『在吗』检测到多张近处人脸", "Multiple faces detected"),
             L.T($"画面中有 {count} 张人脸达到面积阈值。只要其中一张还在，『在吗』就会认为你在电脑前，你离开后电脑可能不会锁定。请调整摄像头角度或提高人脸面积阈值。",
                 $"{count} faces meet the minimum size. Detection of any one of them will keep the PC awake and may prevent it from locking after you leave. Adjust the camera angle or increase the minimum face size.")));
     }
@@ -378,16 +505,218 @@ public sealed partial class MainWindow : Window
         if (item is not null) box.SelectedItem = item;
     }
 
-    private void IntervalBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    // 只有用户点关闭按钮才记住；启动时按设置隐藏不会触发 Closed
+    private void NoticeBar_Closed(InfoBar sender, InfoBarClosedEventArgs args)
+    {
+        if (!_ready || args.Reason != InfoBarCloseReason.CloseButton) return;
+        if (sender == OfflineBar) _settings.HideOfflineNotice = true;
+        else if (sender == PrivacyBar) _settings.HidePrivacyNotice = true;
+        _settings.Save();
+        UpdateShowNoticesLink();
+    }
+
+    private void PostureSwitch_Toggled(object sender, RoutedEventArgs e)
     {
         if (!_ready) return;
-        if (IntervalBox.SelectedItem is ComboBoxItem item && uint.TryParse(item.Tag?.ToString(), out var seconds))
+        _settings.PostureCheck = PostureSwitch.IsOn;
+        _settings.Save();
+        _presence.PostureCheck = PostureSwitch.IsOn;
+        UpdatePostureVisibility();
+        RefreshPowerInfo();
+    }
+
+    private void UpdatePostureVisibility()
+    {
+        var visibility = _settings.PostureCheck ? Visibility.Visible : Visibility.Collapsed;
+        PosturePanel.Visibility = PostureIntervalPanel.Visibility = visibility;
+        // 打开坐姿检测时展开，显示坐姿检测间隔；关闭时收起
+        PostureCard.IsExpanded = _settings.PostureCheck;
+    }
+
+    private void ThemeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || ThemeBox.SelectedIndex < 0) return;
+        _settings.Theme = (AppTheme)ThemeBox.SelectedIndex;
+        _settings.Save();
+        ApplyTheme();
+    }
+
+    /// <summary>窗口内容和标题栏按设置切换浅色/深色；弹出层在打开时按 ActualTheme 设置（见 Themed）。</summary>
+    private void ApplyTheme()
+    {
+        WindowRoot.RequestedTheme = _settings.Theme switch
         {
-            _settings.IntervalSeconds = seconds;
-            _settings.Save();
-            if (EnabledSwitch.IsOn) _presence.SetInterval(seconds);
-            RefreshPolicyInfo();
+            AppTheme.Light => ElementTheme.Light,
+            AppTheme.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        };
+        AppWindow.TitleBar.PreferredTheme = _settings.Theme switch
+        {
+            AppTheme.Light => TitleBarTheme.Light,
+            AppTheme.Dark => TitleBarTheme.Dark,
+            _ => TitleBarTheme.UseDefaultAppMode,
+        };
+        UpdateCaptionButtons();
+    }
+
+    /// <summary>
+    /// 沉浸式标题栏：内容延伸到标题栏，拖动区域是 AppTitleBar。最小化/最大化/关闭按钮仍由系统绘制，
+    /// Windows 10 上同样可用；按钮背景透明，让 Mica / 窗口背景透出来。
+    /// </summary>
+    private void SetupTitleBar()
+    {
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall; // 与 48 像素高的 AppTitleBar 对齐
+        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        WindowRoot.ActualThemeChanged += (_, _) => UpdateCaptionButtons();
+        Activated += (_, e) => AppTitleBarText.Opacity = e.WindowActivationState == WindowActivationState.Deactivated ? 0.5 : 1;
+    }
+
+    // 按钮图标颜色跟随当前浅色/深色主题（跟随系统时，系统切换主题也会更新）
+    private void UpdateCaptionButtons()
+    {
+        var dark = WindowRoot.ActualTheme == ElementTheme.Dark;
+        var bar = AppWindow.TitleBar;
+        bar.ButtonForegroundColor = dark ? Microsoft.UI.Colors.White : Microsoft.UI.Colors.Black;
+        bar.ButtonHoverForegroundColor = bar.ButtonForegroundColor;
+        bar.ButtonPressedForegroundColor = bar.ButtonForegroundColor;
+        bar.ButtonInactiveForegroundColor = dark ? Windows.UI.Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF) : Windows.UI.Color.FromArgb(0x80, 0, 0, 0);
+        bar.ButtonHoverBackgroundColor = dark ? Windows.UI.Color.FromArgb(0x15, 0xFF, 0xFF, 0xFF) : Windows.UI.Color.FromArgb(0x10, 0, 0, 0);
+        bar.ButtonPressedBackgroundColor = dark ? Windows.UI.Color.FromArgb(0x0B, 0xFF, 0xFF, 0xFF) : Windows.UI.Color.FromArgb(0x08, 0, 0, 0);
+    }
+
+    /// <summary>对话框等弹出层不会自动继承窗口里选的主题，显示前调用。</summary>
+    internal static T Themed<T>(T popup, XamlRoot root) where T : FrameworkElement
+    {
+        if (root.Content is FrameworkElement content) popup.RequestedTheme = content.ActualTheme;
+        return popup;
+    }
+
+    private void NotificationMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || NotificationModeButtons.SelectedIndex < 0) return;
+        _settings.Notifications = (NotificationMode)NotificationModeButtons.SelectedIndex;
+        _settings.Save();
+    }
+
+    /// <summary>所有托盘通知都走这里，按“通知”设置决定是否显示。</summary>
+    private void Notify(string title, string text)
+    {
+        switch (_settings.Notifications)
+        {
+            case NotificationMode.Never:
+                return;
+            case NotificationMode.QuietWhenFullscreen when FullscreenAppInFront():
+                return;
         }
+        _tray.ShowBalloon(title, text);
+    }
+
+    // 与 Windows 自己判断“玩游戏/全屏时勿扰”用的是同一个接口
+    private static bool FullscreenAppInFront() =>
+        SHQueryUserNotificationState(out var state) == 0 && state is QunsBusy or QunsRunningD3DFullScreen or QunsPresentationMode;
+
+    private const int QunsBusy = 2, QunsRunningD3DFullScreen = 3, QunsPresentationMode = 4;
+    [DllImport("shell32.dll")] private static extern int SHQueryUserNotificationState(out int state);
+
+    private void PostureIntervalMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_ready || PostureIntervalModeButtons.SelectedIndex < 0) return;
+        _settings.PostureFollowDetection = PostureIntervalModeButtons.SelectedIndex == 0;
+        _settings.Save();
+        ApplyPostureInterval();
+    }
+
+    private void PostureIntervalPicker_ValueChanged(object? sender, TimeSpan value)
+    {
+        if (!_ready) return;
+        _settings.PostureIntervalSeconds = (uint)value.TotalSeconds;
+        _settings.Save();
+        ApplyPostureInterval();
+    }
+
+    /// <summary>跟随模式下 PresenceService 的坐姿间隔为 0（只随在场检测）；自定义时按设定的秒数单独检测。</summary>
+    private void ApplyPostureInterval()
+    {
+        var follow = _settings.PostureFollowDetection;
+        _presence.PostureIntervalSeconds = follow ? 0 : _settings.PostureIntervalSeconds;
+        PostureIntervalPicker.Visibility = follow ? Visibility.Collapsed : Visibility.Visible;
+        PostureFollowNote.Visibility = follow && _settings.SmartDetection ? Visibility.Visible : Visibility.Collapsed;
+        RefreshPowerInfo();
+    }
+
+    private void PostureAreaSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_ready) return;
+        _settings.PostureMaxAreaPercent = PostureAreaSlider.Value;
+        _presence.PostureMaxAreaPercent = PostureAreaSlider.Value;
+        UpdatePostureText();
+        _settings.Save();
+    }
+
+    private void PostureSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_ready) return;
+        _settings.PostureLineFromBottomPercent = PostureSlider.Value;
+        _presence.PostureLinePercent = PostureSlider.Value;
+        UpdatePostureText();
+        _settings.Save();
+    }
+
+    private void UpdatePostureText()
+    {
+        PostureLineText.Text = L.T($"当前高度阈值：距底部 {PostureSlider.Value:0}%", $"Height threshold: {PostureSlider.Value:0}% from the bottom");
+        PostureAreaText.Text = L.T($"当前距离阈值：{PostureAreaSlider.Value:0.#}%", $"Distance threshold: {PostureAreaSlider.Value:0.#}%");
+    }
+
+    private int CurrentRotation => _settings.CameraId is { } id && _settings.CameraRotations.TryGetValue(id, out var r) ? r : 0;
+
+    private void UpdateRotateButton() => RotateButton.Content =
+        L.T($"旋转画面 90°（当前 {CurrentRotation}°）", $"Rotate image 90° (current rotation: {CurrentRotation}°)");
+
+    // 每个摄像头单独记住方向；运行中立即生效，预览和检测都按新方向
+    private void RotateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_settings.CameraId is not { } id) return;
+        var rotation = (CurrentRotation + 90) % 360;
+        if (rotation == 0) _settings.CameraRotations.Remove(id); else _settings.CameraRotations[id] = rotation;
+        _settings.Save();
+        _presence.Rotation = rotation;
+        UpdateRotateButton();
+    }
+
+    private void Presence_PostureAlert(object? sender, PostureAlertArgs e)
+    {
+        var text = e.SuggestRest ? L.T("太累了？休息一下吧！", "Tired? Take a break!")
+            : e.Issues == (PostureIssue.Slouching | PostureIssue.TooClose)
+                ? L.T("抬头挺腰，注意用眼距离。", "Sit up straight and keep a healthy distance from the screen.")
+            : e.Issues == PostureIssue.TooClose
+                ? L.T("注意用眼距离。", "Keep a healthy distance from the screen.")
+                : L.T("记得抬头挺腰。", "Remember to sit up straight.");
+        DispatcherQueue.TryEnqueue(() => Notify(L.T("坐姿提醒", "Posture reminder"), text));
+    }
+
+    private void SmartSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_ready) return;
+        _settings.SmartDetection = SmartSwitch.IsOn;
+        _settings.Save();
+        _presence.SmartDetection = SmartSwitch.IsOn;
+        UpdateIntervalLabel();
+        ApplyPostureInterval(); // 跟随模式下的智能检测说明随之显示/隐藏
+        RefreshPolicyInfo();
+    }
+
+    private void IntervalPicker_ValueChanged(object? sender, TimeSpan value)
+    {
+        if (!_ready) return;
+        var seconds = (uint)value.TotalSeconds;
+        _settings.IntervalSeconds = seconds;
+        _settings.Save();
+        if (EnabledSwitch.IsOn) _presence.SetInterval(seconds);
+        RefreshPolicyInfo();
     }
 
     private void AwayModeButtons_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -396,20 +725,32 @@ public sealed partial class MainWindow : Window
         _settings.LockWhenAway = AwayModeButtons.SelectedIndex == 1;
         _settings.Save();
         _presence.LockWhenAway = _settings.LockWhenAway;
-        LockDelayBox.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
+        LockDelayCard.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
         RefreshPolicyInfo();
     }
 
     private void LockDelayBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_ready || LockDelayBox.SelectedItem is not ComboBoxItem item) return;
+        var custom = item.Tag as string == "custom";
+        LockDelayPicker.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+        SetLockDelay(item.Tag as string switch { "immediate" => 0, "interval" => -1, _ => (int)_settings.LockDelayCustomSeconds });
+    }
+
+    private void LockDelayPicker_ValueChanged(object? sender, TimeSpan value)
+    {
         if (!_ready) return;
-        if (LockDelayBox.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag?.ToString(), out var seconds))
-        {
-            _settings.LockDelaySeconds = seconds;
-            _settings.Save();
-            _presence.LockDelay = seconds < 0 ? null : TimeSpan.FromSeconds(seconds);
-            RefreshPolicyInfo();
-        }
+        _settings.LockDelayCustomSeconds = (uint)value.TotalSeconds;
+        SetLockDelay((int)_settings.LockDelayCustomSeconds);
+    }
+
+    /// <summary>0：立即锁定；-1：延迟一个在场检测间隔；大于 0：自定义秒数。</summary>
+    private void SetLockDelay(int seconds)
+    {
+        _settings.LockDelaySeconds = seconds;
+        _settings.Save();
+        _presence.LockDelay = seconds < 0 ? null : TimeSpan.FromSeconds(seconds);
+        RefreshPolicyInfo();
     }
 
     /// <summary>刷新“离开后会发生什么”的说明，以及 PowerToys Awake 冲突提示。</summary>
@@ -421,11 +762,13 @@ public sealed partial class MainWindow : Window
         {
             var delay = _settings.LockDelaySeconds < 0 ? interval : TimeSpan.FromSeconds(_settings.LockDelaySeconds);
             var total = PowerPolicy.Describe(interval + delay);
+            // 智能检测时“离开”从最后一次键鼠操作算起，第一项是停止操作后的等待时间
+            var (zhTerm, enTerm) = _settings.SmartDetection ? ("停止操作等待 + 锁定延迟", "idle period + lock delay") : ("检测间隔 + 锁定延迟", "check interval + lock delay");
             PolicyText.Text = delay == TimeSpan.Zero
-                ? L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后立即锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（检测间隔 + 锁定延迟）。",
-                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. The PC locks as soon as a check detects no qualifying face. Returning after the PC has locked does not unlock it.\nThe estimated maximum time from leaving to locking is {total} (check interval + lock delay).")
-                : L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后再等 {PowerPolicy.Describe(delay)}，期间仍未回来就锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（检测间隔 + 锁定延迟）。",
-                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. If a check detects no qualifying face, a {PowerPolicy.Describe(delay)} lock countdown begins. Detecting a qualifying face before the countdown ends cancels the pending lock.\nThe estimated maximum time from leaving to locking is {total} (check interval + lock delay).");
+                ? L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后立即锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（{zhTerm}）。",
+                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. The PC locks as soon as a check detects no qualifying face. Returning after the PC has locked does not unlock it.\nThe estimated maximum time from leaving to locking is {total} ({enTerm}).")
+                : L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后再等 {PowerPolicy.Describe(delay)}，期间仍未回来就锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（{zhTerm}）。",
+                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. If a check detects no qualifying face, a {PowerPolicy.Describe(delay)} lock countdown begins. Detecting a qualifying face before the countdown ends cancels the pending lock.\nThe estimated maximum time from leaving to locking is {total} ({enTerm}).");
         }
         else
         {
@@ -461,22 +804,25 @@ public sealed partial class MainWindow : Window
         {
             (level, reason) = (0, L.T("未启用，摄像头关闭", "detection off, camera off"));
         }
-        else if (PreviewWanted)
-        {
-            // 预览可见时摄像头一直工作
-            (level, reason) = (3, L.T("预览让摄像头一直工作，关闭预览或把窗口收到托盘即可省电",
-                "the preview keeps the camera on; turn off the preview or close this window to save power"));
-        }
         else
         {
-            // 后台运行时每次检测打开摄像头约 1–2 秒，间隔越短，摄像头工作的比例越高
+            // 只按检测频率评级，不管预览是否打开：每次检测开摄像头约 1–2 秒，间隔越短，摄像头工作的比例越高；
+            // 间隔短到 10 秒以内时两次检测之间来不及关摄像头，等于一直开着
+            static int LevelFor(uint seconds) => seconds switch { <= 10 => 3, <= 15 => 2, <= 30 => 1, _ => 0 };
             var interval = PowerPolicy.Describe(TimeSpan.FromSeconds(IntervalSeconds));
-            (level, reason) = IntervalSeconds switch
+            level = LevelFor(IntervalSeconds);
+            reason = L.T($"每 {interval}检测一次", $"checks every {interval}");
+            // 智能检测：使用键鼠期间不做在场检测，实际开摄像头的次数更少
+            if (_settings.SmartDetection)
+                (level, reason) = (Math.Max(0, level - 1),
+                    L.T($"停止操作 {interval}后才检测，之后每 {interval}检测一次", $"checks after {interval} of keyboard and mouse inactivity, then every {interval} until input resumes"));
+            // 坐姿单独检测时按两者中更频繁的评级
+            if (_settings.PostureCheck && !_settings.PostureFollowDetection)
             {
-                <= 15 => (2, L.T($"每 {interval}打开一次摄像头，间隔较短", $"the camera turns on every {interval}; frequent checks use more power")),
-                <= 30 => (1, L.T($"每 {interval}短暂打开一次摄像头", $"briefly opens the camera every {interval}")),
-                _ => (0, L.T($"每 {interval}短暂打开一次摄像头", $"briefly opens the camera every {interval}")),
-            };
+                level = Math.Max(level, LevelFor(_settings.PostureIntervalSeconds));
+                var posture = PowerPolicy.Describe(TimeSpan.FromSeconds(_settings.PostureIntervalSeconds));
+                reason += L.T($"；坐姿每 {posture}检测一次", $"; posture checked every {posture}");
+            }
             // 接管模式下，离开后到锁定前屏幕保持常亮、摄像头持续工作；延迟 1 分钟以上时值得提醒
             var lockDelay = _settings.LockDelaySeconds < 0 ? (int)IntervalSeconds : _settings.LockDelaySeconds;
             if (_settings.LockWhenAway && lockDelay >= 60)
@@ -515,6 +861,7 @@ public sealed partial class MainWindow : Window
             var index = _cameras.ToList().FindIndex(c => c.Id == _settings.CameraId);
             if (index < 0 && _cameras.Count > 0) { index = 0; _settings.CameraId = _cameras[0].Id; }
             CameraBox.SelectedIndex = index;
+            UpdateRotateButton();
             CameraBox.IsEnabled = _cameras.Count > 0;
             CameraBox.PlaceholderText = _cameras.Count > 0 ? "" : L.T("未找到摄像头", "No camera found");
             _suppressCameraChange = false;
@@ -551,6 +898,7 @@ public sealed partial class MainWindow : Window
         if (id == _settings.CameraId) return;
         _settings.CameraId = id;
         _settings.Save();
+        UpdateRotateButton();
         // 运行中切换摄像头：直接用新摄像头重新开始
         if (EnabledSwitch.IsOn && !_starting) await StartPresenceAsync();
     }
@@ -617,7 +965,7 @@ public sealed partial class MainWindow : Window
         if (!_trayHintShown)
         {
             _trayHintShown = true;
-            _tray.ShowBalloon(L.T("『在吗』仍在运行", "AreYouThere is still running"),
+            Notify(L.T("『在吗』仍在运行", "AreYouThere is still running"),
                 L.T("窗口已收起到托盘。右键托盘图标可启用/关闭或退出。", "The app is running in the system tray. Right-click its icon to turn detection on or off, or to exit."));
         }
     }
@@ -664,7 +1012,7 @@ public sealed partial class MainWindow : Window
 
     private void Presence_LockCountdownStarted(object? sender, TimeSpan delay)
     {
-        DispatcherQueue.TryEnqueue(() => _tray.ShowBalloon(L.T("『在吗』未检测到你", "No qualifying face detected"),
+        DispatcherQueue.TryEnqueue(() => Notify(L.T("『在吗』未检测到你", "No qualifying face detected"),
             L.T($"将在 {PowerPolicy.Describe(delay)}后锁定电脑。回到摄像头前即可取消。", $"The PC will lock in {PowerPolicy.Describe(delay)}. Return to the camera's view before the countdown ends to cancel the pending lock.")));
     }
 
@@ -686,7 +1034,8 @@ public sealed partial class MainWindow : Window
                 await source.SetBitmapAsync(e.Bitmap);
                 PreviewElement.Source = source;
                 PreviewPlaceholder.Visibility = Visibility.Collapsed;
-                DrawFaces(e.Faces, e.Bitmap.PixelWidth);
+                PreviewNoteText.Visibility = Visibility.Visible;
+                DrawFaces(e.Faces, e.Bitmap.PixelWidth, e.Bitmap.PixelHeight);
             }
             catch { }
             finally { e.Bitmap.Dispose(); Volatile.Write(ref _previewBusy, 0); }
@@ -697,15 +1046,29 @@ public sealed partial class MainWindow : Window
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush CloseFaceBrush = new(Windows.UI.Color.FromArgb(255, 0x35, 0xD0, 0x7F));
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FarFaceBrush = new(Windows.UI.Color.FromArgb(200, 0xB0, 0xB0, 0xB0));
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush LabelTextBrush = new(Microsoft.UI.Colors.Black);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush PostureBrush = new(Windows.UI.Color.FromArgb(255, 0xFF, 0x9F, 0x1C));
 
     // 画布按摄像头原始像素布局（外层 Viewbox 统一缩放），线宽和字号按画面宽度换算，缩放后大小一致
-    private void DrawFaces(IReadOnlyList<DetectedFace> faces, int frameWidth)
+    private void DrawFaces(IReadOnlyList<DetectedFace> faces, int frameWidth, int frameHeight)
     {
         FaceCanvas.Children.Clear();
         var unit = frameWidth / 320.0;
+        var posture = _settings.PostureCheck;
+        if (posture)
+        {
+            var y = frameHeight * (100 - PostureSlider.Value) / 100;
+            FaceCanvas.Children.Add(new Microsoft.UI.Xaml.Shapes.Line
+            {
+                X1 = 0, X2 = frameWidth, Y1 = y, Y2 = y, Stroke = PostureBrush, StrokeThickness = 1.5 * unit,
+                StrokeDashArray = [4, 3]
+            });
+        }
         foreach (var face in faces)
         {
-            var brush = face.Close ? CloseFaceBrush : FarFaceBrush;
+            // 近处人脸中心低于坐姿线时用橙色，提示这样会被当作驼背
+            var brush = !face.Close ? FarFaceBrush
+                : posture && (face.CenterHeightPercent < PostureSlider.Value || face.AreaPercent > PostureAreaSlider.Value) ? PostureBrush
+                : CloseFaceBrush;
             var rect = new Microsoft.UI.Xaml.Shapes.Rectangle
             {
                 Width = face.Box.Width, Height = face.Box.Height, Stroke = brush,
@@ -766,6 +1129,7 @@ public sealed partial class MainWindow : Window
         _starting = true;
         UpdateSwitchEnabled();
         StatusText.Text = L.Status(L.T("正在打开摄像头…", "Opening the camera…"));
+        _presence.Rotation = CurrentRotation;
         var result = await _presence.StartAsync(cameraId, IntervalSeconds, PreviewWanted, Report);
         _starting = false;
         UpdateSwitchEnabled();
@@ -813,6 +1177,7 @@ public sealed partial class MainWindow : Window
     {
         PreviewElement.Source = null;
         PreviewPlaceholder.Visibility = Visibility.Visible;
+        PreviewNoteText.Visibility = Visibility.Collapsed;
         FaceCanvas.Children.Clear();
     }
 

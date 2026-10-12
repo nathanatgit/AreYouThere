@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Graphics.Imaging;
 using Windows.Media.Capture;
 using Windows.Media.Capture.Frames;
@@ -10,7 +11,14 @@ namespace AreYouThere.Services;
 
 internal sealed record PresenceStatus(string CameraMessage, string FaceMessage);
 /// <summary>一张检测到的人脸。AreaPercent 是人脸框占整个画面的面积百分比；Close 表示达到阈值、算作“在电脑前”。</summary>
-internal sealed record DetectedFace(Windows.Foundation.Rect Box, double AreaPercent, bool Close);
+internal sealed record DetectedFace(Windows.Foundation.Rect Box, double AreaPercent, bool Close)
+{
+    /// <summary>人脸框中心离画面底部的高度，占画面高度的百分比：0 为底部、100 为顶部。</summary>
+    public double CenterHeightPercent { get; init; }
+}
+[Flags] internal enum PostureIssue { None = 0, Slouching = 1, TooClose = 2 }
+/// <summary>SuggestRest：上次提醒后 5 分钟内又发现问题，改为提醒休息。</summary>
+internal sealed record PostureAlertArgs(PostureIssue Issues, bool SuggestRest);
 internal sealed record PresenceFrame(SoftwareBitmap Bitmap, IReadOnlyList<DetectedFace> Faces);
 /// <summary>Started=false 且 Error=null 表示启动途中被 Stop 取消。</summary>
 internal sealed record StartResult(bool Started, string? Error = null, bool PermissionDenied = false);
@@ -44,6 +52,33 @@ internal sealed class PresenceService : IDisposable
     public TimeSpan? LockDelay { get; set; } = TimeSpan.FromSeconds(30);
     /// <summary>人脸框至少占画面多少百分比才算“在电脑前”；远处的人或墙上的照片通常较小。0 表示任何人脸都算。</summary>
     public double MinFaceAreaPercent { get; set; } = 3;
+    /// <summary>
+    /// 智能检测：有键盘鼠标操作时视为在电脑前，不打开摄像头；停止操作满一个检测间隔后才检测，之后仍按间隔重复。
+    /// 关闭时按固定间隔检测。
+    /// </summary>
+    public bool SmartDetection { get; set; }
+    /// <summary>
+    /// 画面顺时针旋转角度（0/90/180/270）。有些摄像头送来的画面是横的或倒的，
+    /// Windows 的人脸检测只认正立的人脸，所以检测和预览前都先转正。
+    /// </summary>
+    public int Rotation { get; set; }
+    /// <summary>
+    /// 坐姿检测：人脸中心离画面底部的高度低于 PostureLinePercent（百分比）时提醒坐直；
+    /// 人脸面积大于 PostureMaxAreaPercent 时提醒离屏幕远一些。
+    /// </summary>
+    public bool PostureCheck { get; set; }
+    public double PostureLinePercent { get; set; } = 40;
+    public double PostureMaxAreaPercent { get; set; } = 20;
+    /// <summary>
+    /// 坐姿检测间隔（秒）。0：只在在场检测时顺便看坐姿（智能检测下持续打字时不会检测）；
+    /// 大于 0：按自己的时间表单独检测，打字时也照常进行。
+    /// </summary>
+    public uint PostureIntervalSeconds { get; set; }
+    /// <summary>某次检测发现坐姿问题时触发；见 CheckPosture 的频率限制。</summary>
+    public event EventHandler<PostureAlertArgs>? PostureAlert;
+
+    private bool PostureOnOwnSchedule => PostureCheck && PostureIntervalSeconds > 0;
+    private TimeSpan PostureInterval => TimeSpan.FromSeconds(PostureIntervalSeconds);
 
     public event EventHandler<PresenceStatus>? StatusChanged;
     public event EventHandler<PresenceFrame>? FrameReady;
@@ -91,7 +126,7 @@ internal sealed class PresenceService : IDisposable
             _reader.FrameArrived += Reader_FrameArrived;
             await StartStreamAsync();
             if (cts.IsCancellationRequested) return new(false);
-            _nextDetection = DateTimeOffset.UtcNow;
+            _nextDetection = _nextPosture = DateTimeOffset.UtcNow;
             _ = LoopAsync(report, cts.Token);
             return new(true);
         }
@@ -203,6 +238,12 @@ internal sealed class PresenceService : IDisposable
         if (bitmap is null) return;
         if (Interlocked.Increment(ref _framesSinceStart) <= WarmupFrames) return;
         var copy = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+        if (Rotation is 90 or 180 or 270)
+        {
+            var rotated = Rotate(copy, Rotation);
+            copy.Dispose();
+            copy = rotated;
+        }
         SoftwareBitmap? preview = null;
         lock (_frameLock)
         {
@@ -227,7 +268,10 @@ internal sealed class PresenceService : IDisposable
             while (!token.IsCancellationRequested)
             {
                 var now = DateTimeOffset.UtcNow;
-                if (!_streaming && (_previewWanted || now >= _nextDetection))
+                if (SmartDetection) HandleInput(now, report);
+                else _usingInput = false;
+                var postureDue = PostureOnOwnSchedule && now >= _nextPosture;
+                if (!_streaming && (_previewWanted || now >= _nextDetection || postureDue))
                 {
                     try { await StartStreamAsync(); }
                     catch (Exception ex)
@@ -253,6 +297,9 @@ internal sealed class PresenceService : IDisposable
                                 : L.T("未检测到人脸", "No face detected"));
                             if (close >= 2 && !_multipleFacesWarned) MultipleFacesDetected?.Invoke(this, close);
                             _multipleFacesWarned = close >= 2;
+                            // 同一帧顺便看坐姿；单独检测坐姿时下次从现在重新算，避免紧接着又开一次摄像头
+                            if (PostureCheck) CheckPosture(faces, now);
+                            if (PostureOnOwnSchedule) _nextPosture = now + PostureInterval;
                             _nextDetection = HandleResult(close > 0, report);
                         }
                         else if (now - _streamStartedAt > NoFrameTimeout)
@@ -268,6 +315,20 @@ internal sealed class PresenceService : IDisposable
                         report(L.T("本次摄像头检测失败，将在下个周期重试", "Camera check failed; will retry at the next scheduled check"));
                     }
                 }
+                else if (postureDue)
+                {
+                    // 只看坐姿，不改在场状态（智能检测时可能正在打字，在场检测被推迟了）
+                    try
+                    {
+                        if (await DetectLatestFrameAsync() is { } faces)
+                        {
+                            CheckPosture(faces, now);
+                            _nextPosture = now + PostureInterval;
+                        }
+                        else if (now - _streamStartedAt > NoFrameTimeout) _nextPosture = now + PostureInterval;
+                    }
+                    catch { _nextPosture = now + PostureInterval; }
+                }
                 else if (_streaming && _previewWanted && now - _lastOverlay >= OverlayInterval)
                 {
                     _lastOverlay = now;
@@ -275,13 +336,106 @@ internal sealed class PresenceService : IDisposable
                 }
 
                 // 省电：看不到预览且离下次检测还早时，关闭摄像头流（指示灯也会熄灭）
-                if (_streaming && !_previewWanted && _nextDetection - DateTimeOffset.UtcNow > PauseThreshold)
+                var nextUse = PostureOnOwnSchedule && _nextPosture < _nextDetection ? _nextPosture : _nextDetection;
+                if (_streaming && !_previewWanted && nextUse - DateTimeOffset.UtcNow > PauseThreshold)
                     await StopStreamAsync();
 
                 await Task.Delay(TimeSpan.FromMilliseconds(100), token);
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    private bool _usingInput;
+
+    /// <summary>
+    /// 智能检测：最近一个检测间隔内有键鼠操作，就当作人在电脑前（取消锁定倒计时、保持唤醒），
+    /// 并把下次检测推迟到“最后一次操作 + 检测间隔”。停止操作满一个间隔后交给正常的摄像头检测。
+    /// </summary>
+    private void HandleInput(DateTimeOffset now, Action<string> report)
+    {
+        var interval = TimeSpan.FromSeconds(_intervalSeconds);
+        var idle = IdleTime();
+        if (idle >= interval)
+        {
+            _usingInput = false;
+            return;
+        }
+        _nextDetection = now - idle + interval;
+        if (_usingInput && _awaySince is null) return;
+        _usingInput = true;
+        _awaySince = null;
+        KeepAwake(true);
+        var described = PowerPolicy.Describe(interval);
+        // 只说“暂停在场检测”：预览打开或单独的坐姿检测仍会用摄像头
+        ReportStatus(L.T("正在使用键盘鼠标，暂停在场检测", "Keyboard or mouse in use; presence checks paused"));
+        report(L.T($"正在使用电脑，停止操作 {described}后检测", $"PC in use; checks resume after {described} of inactivity"));
+    }
+
+    private static readonly TimeSpan PostureAlertCooldown = TimeSpan.FromMinutes(5);
+    private DateTimeOffset _nextPosture;
+    private DateTimeOffset _lastPostureAlert = DateTimeOffset.MinValue;
+    private bool _restSuggested;
+
+    /// <summary>
+    /// 只看最大的近处人脸；一次检测发现问题就提醒，同一次检测的多个问题合成一条。
+    /// 提醒后 PostureAlertCooldown 内再次发现问题，改为提醒休息一次，之后到冷却结束前不再提醒。
+    /// </summary>
+    private void CheckPosture(IReadOnlyList<DetectedFace> faces, DateTimeOffset now)
+    {
+        if (faces.FirstOrDefault(f => f.Close) is not { } face) return;
+        var issues = PostureIssue.None;
+        if (face.CenterHeightPercent < PostureLinePercent) issues |= PostureIssue.Slouching;
+        if (face.AreaPercent > PostureMaxAreaPercent) issues |= PostureIssue.TooClose;
+        if (issues == PostureIssue.None) return;
+        if (now - _lastPostureAlert >= PostureAlertCooldown)
+        {
+            _lastPostureAlert = now;
+            _restSuggested = false;
+            PostureAlert?.Invoke(this, new PostureAlertArgs(issues, SuggestRest: false));
+        }
+        else if (!_restSuggested)
+        {
+            _restSuggested = true;
+            PostureAlert?.Invoke(this, new PostureAlertArgs(issues, SuggestRest: true));
+        }
+    }
+
+    /// <summary>把 Bgra8 画面顺时针旋转 90/180/270 度。</summary>
+    private static SoftwareBitmap Rotate(SoftwareBitmap source, int degrees)
+    {
+        int w = source.PixelWidth, h = source.PixelHeight;
+        var input = new byte[w * h * 4];
+        source.CopyToBuffer(input.AsBuffer());
+        var swap = degrees != 180;
+        int nw = swap ? h : w, nh = swap ? w : h;
+        var output = new byte[input.Length];
+        var src = MemoryMarshal.Cast<byte, uint>(input);
+        var dst = MemoryMarshal.Cast<byte, uint>(output);
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (nx, ny) = degrees switch
+                {
+                    90 => (h - 1 - y, x),
+                    180 => (w - 1 - x, h - 1 - y),
+                    _ => (y, w - 1 - x),
+                };
+                dst[ny * nw + nx] = src[y * w + x];
+            }
+        }
+        var result = new SoftwareBitmap(BitmapPixelFormat.Bgra8, nw, nh, BitmapAlphaMode.Premultiplied);
+        result.CopyFromBuffer(output.AsBuffer());
+        return result;
+    }
+
+    /// <summary>距离最后一次键盘鼠标操作（本会话内）的时长。</summary>
+    private static TimeSpan IdleTime()
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        if (!GetLastInputInfo(ref info)) return TimeSpan.MaxValue;
+        return TimeSpan.FromMilliseconds(unchecked((uint)Environment.TickCount - info.dwTime));
     }
 
     /// <summary>根据检测结果设置电源状态，返回下一次检测的时间。</summary>
@@ -355,7 +509,10 @@ internal sealed class PresenceService : IDisposable
                 {
                     var b = f.FaceBox;
                     var percent = b.Width * b.Height / frameArea * 100;
-                    return new DetectedFace(new Windows.Foundation.Rect(b.X, b.Y, b.Width, b.Height), percent, percent >= threshold);
+                    return new DetectedFace(new Windows.Foundation.Rect(b.X, b.Y, b.Width, b.Height), percent, percent >= threshold)
+                    {
+                        CenterHeightPercent = 100 - (b.Y + b.Height / 2.0) / bitmap.PixelHeight * 100
+                    };
                 })
                 .OrderByDescending(f => f.AreaPercent)
                 .ToList();
@@ -400,12 +557,15 @@ internal sealed class PresenceService : IDisposable
         _lastFaceMessage = null;
         _awaySince = null;
         _multipleFacesWarned = false;
+        _usingInput = false;
         StatusChanged?.Invoke(this, new(L.T("已关闭", "Off"), L.T("未检测", "Not checking")));
         KeepAwake(false);
     }
 
     public void Dispose() => Stop();
 
+    [StructLayout(LayoutKind.Sequential)] private struct LASTINPUTINFO { public uint cbSize, dwTime; }
+    [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
     private const uint EsContinuous = 0x80000000;
     private const uint EsDisplayRequired = 0x00000002;
     [DllImport("kernel32.dll")]

@@ -72,7 +72,7 @@ internal static class StartupService
                 "AreYouThere is already running. No second instance will be started. Check the detection status in the app window. The camera light turns on whenever the camera is in use.")
             : settings.StartupConsent
             ? L.T($"点击“确定”后将按当前设置每 {interval}检测一次，摄像头指示灯会在检测时亮起。显示预览时摄像头会持续工作。",
-                $"Click OK to begin presence detection using your current settings. Background checks run every {interval}, and the camera light turns on during each check. The camera stays on while the preview is visible.")
+                $"Click OK to begin presence detection using your current settings. Your presence check interval is {interval}. Smart detection, if enabled, pauses presence checks while you're using the keyboard or mouse. The camera light comes on during checks. The preview, separate posture checks, or a lock countdown may keep the camera on or use it more often.")
             : L.T("尚未在应用内确认开机自启动，摄像头检测保持关闭。请在应用中启用并确认此选项。",
                 "You have not agreed to automatic startup in the app, so detection remains off. To enable it, turn on \"Start when I sign in to Windows\" and confirm the privacy notice.");
         var text = L.T("『在吗』AreYouThere 已随 Windows 登录自动启动，正在运行。", "AreYouThere is running. It started automatically when you signed in to Windows.")
@@ -118,7 +118,7 @@ internal static class StartupService
         ok.Click += (_, _) => { CancelHold(); acknowledged = true; dialog.Hide(); };
         dialog.Closing += (_, e) => e.Cancel = !acknowledged;
         dialog.Opened += (_, _) => ok.Focus(FocusState.Programmatic);
-        try { await dialog.ShowAsync(); }
+        try { await MainWindow.Themed(dialog, root).ShowAsync(); }
         finally { CancelHold(); }
         if (!held) return;
 
@@ -132,17 +132,17 @@ internal static class StartupService
             CloseButtonText = L.T("保留每次提醒", "Keep reminders"),
             DefaultButton = ContentDialogButton.Close
         };
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await MainWindow.Themed(confirm, root).ShowAsync() != ContentDialogResult.Primary) return;
         settings.SkipStartupReminder = true;
         try { settings.SaveOrThrow(); }
         catch (Exception ex)
         {
             settings.SkipStartupReminder = false;
-            await new ContentDialog
+            await MainWindow.Themed(new ContentDialog
             {
                 XamlRoot = root, Title = L.T("无法保存提醒设置", "Couldn't save the reminder setting"),
                 Content = L.T($"仍会在下次启动时提醒。\n{ex.Message}", $"You'll still be reminded at the next startup.\n{ex.Message}"), CloseButtonText = L.T("确定", "OK")
-            }.ShowAsync();
+            }, root).ShowAsync();
         }
     }
 }
