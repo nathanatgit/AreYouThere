@@ -166,9 +166,11 @@ jobs:
         run: |
           $v = '${{ steps.version.outputs.value }}'
           $files = @(Get-ChildItem out -File | Where-Object { $_.Extension -in '.zip', '.msi', '.exe', '.msixbundle' } | ForEach-Object FullName)
-          $signNote = if ($env:SIGNED -eq 'true') { '' } else { "`n> ⚠️ exe / msi 未签名，Windows 可能提示“未知发布者”，点“更多信息 → 仍要运行”即可。msixbundle 是提交 Microsoft Store 用的包，不能直接双击安装；ARM 设备请从 Microsoft Store 安装。`n" }
+          $signNote = if ($env:SIGNED -eq 'true') { '' } else { "`n> ⚠️ exe / msi 未签名，Windows 可能提示“未知发布者”，点“更多信息 → 仍要运行”即可。msixbundle 是提交 Microsoft Store 用的包，不能直接双击安装；ARM 设备请从 [Microsoft Store](https://apps.microsoft.com/detail/9N4T5SJXMJH3) 安装。`n" }
           $notes = @"
-          ## 下载哪个？
+          **推荐从 [Microsoft Store](https://apps.microsoft.com/detail/9N4T5SJXMJH3) 安装**：自动更新，支持 x86 / x64 / ARM64，没有“未知发布者”提示。
+
+          ## 或者直接下载
 
           | 文件 | 说明 |
           |---|---|

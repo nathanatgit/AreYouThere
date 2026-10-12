@@ -19,7 +19,9 @@ A lightweight workaround for Microsoft's official Presence Sensing feature, whic
 
 ## 下载
 
-到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载：
+**推荐：[从 Microsoft Store 安装](https://apps.microsoft.com/detail/9N4T5SJXMJH3)**（自动更新，ARM 设备也适用，没有“未知发布者”提示）。
+
+也可以到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载：
 
 - **MSI**（x64 / x86）：安装版，推荐
 - **便携版 exe**（x64 / x86）：单个文件，下载即用

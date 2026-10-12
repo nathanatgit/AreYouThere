@@ -1,5 +1,15 @@
 # 上架 Microsoft Store
 
+| 项目 | 值 |
+|---|---|
+| 商店页面 | <https://apps.microsoft.com/detail/9N4T5SJXMJH3> |
+| Store ID | `9N4T5SJXMJH3` |
+| 商店协议链接 | `ms-windows-store://pdp/?productid=9N4T5SJXMJH3` |
+| Package/Identity/Name | `NathanHan.AreYouThere` |
+| Package/Identity/Publisher | `CN=65060FB2-9417-4C15-9ABF-D5188EB4DF3A` |
+| PublisherDisplayName | `NathanHan` |
+| 包系列名 (PFN) | `NathanHan.AreYouThere_1qae44mz451pg`（由前两项计算得出，构建时无需配置） |
+
 Microsoft Store 会替你给 MSIX 签名，用户从商店安装不会看到任何“未知发布者”警告，ARM 设备也会自动拿到 ARM64 版本。商店只覆盖 MSIX；GitHub Release 里的 MSI / 便携版 / zip 不受影响。
 
 ## 1. 注册开发者账户（只需一次）
