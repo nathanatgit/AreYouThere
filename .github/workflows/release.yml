@@ -1,8 +1,8 @@
 # 推送 v* 标签（如 v0.1.0）时自动构建并发布 GitHub Release。
 #
 # 产物：
-#   x86 / x64：MSI 安装包、单文件便携版 exe、zip（文件夹版）
-#   msixbundle：x86 + x64 + arm64（ARM64 只通过 MSIX 发布）
+#   x86 / x64 / arm64：MSI 安装包、单文件便携版 exe、zip（文件夹版）
+#   msixbundle：x86 + x64 + arm64
 #
 # MSIX 身份（Settings › Secrets and variables › Actions › Variables）。上架 Microsoft Store 时
 # 填 Partner Center“产品标识”页面上的值，商店会负责签名，见 docs/microsoft-store.md：
@@ -45,7 +45,7 @@ jobs:
           - arch: x64
             kinds: zip,portable,msi,msix
           - arch: arm64
-            kinds: msix
+            kinds: zip,portable,msi,msix
     steps:
       - uses: actions/checkout@v4
 
