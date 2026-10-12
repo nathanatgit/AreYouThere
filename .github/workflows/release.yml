@@ -10,7 +10,7 @@
 #   MSIX_PUBLISHER                Package/Identity/Publisher，例如 CN=XXXXXXXX-XXXX-...
 #   MSIX_PUBLISHER_DISPLAY_NAME   Package/Properties/PublisherDisplayName
 #
-# 可选的自有证书签名（不配置也能发布；exe/msi 会提示“未知发布者”）：
+# 可选的自有证书签名（配置后会额外生成可供用户侧载的签名包）：
 #   Secrets  SIGNING_CERT_BASE64   .pfx 证书的 base64
 #            SIGNING_CERT_PASSWORD .pfx 密码（此时 MSIX_PUBLISHER 必须与证书主题一致）
 name: Release
@@ -95,6 +95,7 @@ jobs:
             Publisher            = $env:PUBLISHER
             IdentityName         = $env:IDENTITY_NAME
             PublisherDisplayName = $env:PUBLISHER_DISPLAY_NAME
+            UnsignedMsix         = $true
           }
           if ('${{ steps.cert.outputs.path }}') { $params.CertPath = '${{ steps.cert.outputs.path }}'; $params.CertPassword = $env:CERT_PASSWORD }
           ./build/build-release.ps1 @params
@@ -154,9 +155,23 @@ jobs:
         env:
           CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
+          $v = '${{ steps.version.outputs.value }}'
           $params = @{ Version = '${{ steps.version.outputs.value }}'; Bundle = $true; OutDir = 'out' }
-          if ('${{ steps.cert.outputs.path }}') { $params.CertPath = '${{ steps.cert.outputs.path }}'; $params.CertPassword = $env:CERT_PASSWORD }
           ./build/build-release.ps1 @params
+
+          if (-not '${{ steps.cert.outputs.path }}') {
+            Write-Host '未配置签名证书：只生成 Microsoft Store 提交包。'
+          } else {
+            $bundle = Join-Path (Resolve-Path out) "AreYouThere-$($v).msixbundle"
+            $sideload = Join-Path (Resolve-Path out) "AreYouThere-$($v)-sideload.msixbundle"
+            $params.CertPath = '${{ steps.cert.outputs.path }}'
+            $params.CertPassword = $env:CERT_PASSWORD
+            ./build/build-release.ps1 @params
+            Move-Item $bundle $sideload -Force
+            ./build/build-release.ps1 -Version $v -Bundle -OutDir out
+            $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new('${{ steps.cert.outputs.path }}', $env:CERT_PASSWORD)
+            [IO.File]::WriteAllBytes((Join-Path (Resolve-Path out) 'AreYouThere-sideload.cer'), $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          }
 
       - name: Publish GitHub Release
         shell: pwsh
@@ -165,10 +180,11 @@ jobs:
           SIGNED: ${{ steps.cert.outputs.path != '' }}
         run: |
           $v = '${{ steps.version.outputs.value }}'
-          $files = @(Get-ChildItem out -File | Where-Object { $_.Extension -in '.zip', '.msi', '.exe', '.msixbundle' } | ForEach-Object FullName)
+          $files = @(Get-ChildItem out -File | Where-Object { $_.Extension -in '.zip', '.msi', '.exe', '.msixbundle', '.cer' } | ForEach-Object FullName)
           # 说明文字放在 build/release-notes.md：中文弯引号写在 pwsh 字符串里会被当成引号而导致解析失败
           $notes = [IO.File]::ReadAllText('build/release-notes.md').Replace('{VERSION}', $v)
           $notes = if ($env:SIGNED -eq 'true') { $notes -replace '(?s)<!-- unsigned -->.*?<!-- /unsigned -->\r?\n?', '' } else { $notes -replace '<!-- /?unsigned -->\r?\n?', '' }
+          $notes = if ($env:SIGNED -eq 'true') { $notes -replace '<!-- /?signed -->\r?\n?', '' } else { $notes -replace '(?s)<!-- signed -->.*?<!-- /signed -->\r?\n?', '' }
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           [IO.File]::WriteAllText($notesFile, $notes, [Text.UTF8Encoding]::new($false))
           gh release create "v$v" @files --title "在吗 AreYouThere v$v" --notes-file $notesFile --generate-notes --target '${{ github.sha }}'

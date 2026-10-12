@@ -32,6 +32,7 @@ param(
     [string] $PublisherDisplayName = 'NathanHan',
     [string] $CertPath,
     [string] $CertPassword,
+    [switch] $UnsignedMsix,
     [string] $Wix = 'wix'
 )
 
@@ -146,6 +147,6 @@ if ($Kinds -contains 'msix') {
     if (-not $built) { throw '没有生成 .msix' }
     $msix = Join-Path $msixOut "AreYouThere-$Version-$Arch.msix"
     Copy-Item $built.FullName $msix -Force
-    Sign-File $msix
+    if (-not $UnsignedMsix) { Sign-File $msix }
     Write-Host "已生成 $msix"
 }

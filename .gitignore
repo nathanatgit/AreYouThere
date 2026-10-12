@@ -4,3 +4,6 @@ obj/
 .vs/
 *.user
 out/
+*.pfx
+*.p12
+*.key
