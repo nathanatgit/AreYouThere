@@ -89,7 +89,6 @@
 
       <!-- 每个设置一行卡片（PowerToys / Windows 设置风格）：左边图标、标题、说明，右边是控件 -->
       <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="4">
-        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" />
         <InfoBar x:Name="CameraProblem" IsOpen="False" Visibility="Collapsed" Severity="Error" IsClosable="False">
           <InfoBar.ActionButton>
             <Button x:Name="CameraPrivacyButton" Click="CameraPrivacyButton_Click" />
@@ -154,6 +153,8 @@
         </toolkit:SettingsExpander>
 
         <TextBlock x:Name="AwayHeader" Style="{StaticResource SectionHeader}" />
+        <!-- PowerToys Awake 提示：跟随系统电源策略时是冲突警告，由『在吗』接管时只是信息提示 -->
+        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" Margin="0,0,0,4" />
         <toolkit:SettingsCard x:Name="AwayCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
           <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
           <!-- 标题、选项在上，说明文字放在最后 -->

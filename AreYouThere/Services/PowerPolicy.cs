@@ -87,8 +87,12 @@ internal sealed record PowerPolicy(bool OnBattery, uint DisplayOffSeconds, uint 
 /// </summary>
 internal static class PowerToysAwake
 {
-    /// <summary>没有冲突时返回 null，否则返回给用户的提示。</summary>
-    public static string? CheckConflict()
+    /// <summary>
+    /// 没有需要提示的情况时返回 null。
+    /// 跟随系统电源策略时，Awake 会让离开后的息屏/锁屏失效，是真正的冲突（IsConflict = true），建议改由『在吗』接管；
+    /// 由『在吗』接管时锁屏不受影响，只在 Awake 保持屏幕常亮时提示锁屏后屏幕也不会息屏。
+    /// </summary>
+    public static (string Message, bool IsConflict)? Check(bool lockWhenAway)
     {
         Process[] processes;
         try { processes = Process.GetProcessesByName("PowerToys.Awake"); }
@@ -108,8 +112,12 @@ internal static class PowerToysAwake
         }
         catch
         {
-            return L.T("检测到 PowerToys Awake 正在运行。如果它处于保持唤醒状态，可能与『在吗』冲突。",
-                "PowerToys Awake is running. If it is keeping the PC awake, it may conflict with AreYouThere.");
+            // 读不到 Awake 的设置：不知道它当前的模式，按可能的情况提示
+            return lockWhenAway
+                ? (L.T("检测到 PowerToys Awake 正在运行。如果它设置为保持屏幕常亮，即使『在吗』锁定了电脑，屏幕也不会息屏。",
+                    "PowerToys Awake is running. If it keeps the screen on, the screen won't turn off even after AreYouThere locks the PC."), false)
+                : (L.T("检测到 PowerToys Awake 正在运行。如果它处于保持唤醒状态，可能与跟随系统电源策略冲突，离开后不会息屏或锁屏。建议切换为由『在吗』接管。",
+                    "PowerToys Awake is running. If it is keeping the PC awake, it may conflict with following Windows power settings, so the screen may not turn off or lock after you leave. Consider letting AreYouThere lock the PC instead."), true);
         }
 
         // Awake 模式：0 被动（使用电源计划）、1 无限期、2 定时、3 保持到指定时间
@@ -121,10 +129,19 @@ internal static class PowerToysAwake
             _ => null
         };
         if (modeText is null) return null;
+
+        if (lockWhenAway)
+        {
+            // 只让电脑不睡眠时，『在吗』照常锁定、屏幕照常息屏，不必提示
+            if (!keepDisplayOn) return null;
+            return (L.T($"PowerToys Awake 当前为“{modeText}”模式并保持屏幕常亮：『在吗』仍会在你离开后锁定电脑，但锁屏后屏幕也不会息屏。",
+                $"PowerToys Awake is set to \"{modeText}\" and keeps the screen on. AreYouThere still locks the PC after you leave, but the screen won't turn off after locking."), false);
+        }
+
         var effect = keepDisplayOn
-            ? L.T("屏幕会一直保持常亮，你离开后也不会息屏。", "The screen stays on and won't turn off after you leave. ")
-            : L.T("电脑不会进入睡眠，依赖睡眠的自动锁屏可能不会发生。", "The PC won't go to sleep, so it may not lock automatically if locking depends on sleep. ");
-        return L.T($"PowerToys Awake 当前为“{modeText}”模式：{effect}这可能与『在吗』冲突，建议在 PowerToys 中把 Awake 改回使用电源计划（被动）模式。",
-            $"PowerToys Awake is set to \"{modeText}\". {effect}This may conflict with AreYouThere. In PowerToys, set Awake back to \"Keep using the selected power plan\" (passive).");
+            ? L.T("屏幕会一直保持常亮，你离开后也不会息屏或锁屏，", "The screen stays on, so it won't turn off or lock after you leave. ")
+            : L.T("电脑不会进入睡眠，依赖睡眠的自动锁屏可能不会发生，", "The PC won't go to sleep, so it may not lock automatically if locking depends on sleep. ");
+        return (L.T($"PowerToys Awake 当前为“{modeText}”模式：{effect}这与跟随系统电源策略冲突。建议切换为由『在吗』接管，离开后由『在吗』锁定电脑。",
+            $"PowerToys Awake is set to \"{modeText}\". {effect}This conflicts with following Windows power settings. Consider letting AreYouThere lock the PC when you leave instead."), true);
     }
 }

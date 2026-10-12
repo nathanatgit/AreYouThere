@@ -153,7 +153,6 @@ public sealed partial class MainWindow : Window
             "AreYouThere never connects to the internet. Camera images are processed only in memory on this PC, then discarded. No images or detection results are saved or uploaded. Only your preferences are saved locally.");
         PrivacyBar.Message = L.T("隐私提醒：启用后摄像头指示灯会亮起（显示预览时常亮，后台运行时每次检测短暂亮起）。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。",
             "Privacy notice: the camera light stays on while the preview is visible and lights up briefly during each background check. Avoid using the camera where privacy is expected, as this may cause concern or disputes. In public places, follow the venue's rules and increase the minimum face size to help filter out passersby. The app detects faces, not identities: another person's face may keep the PC unlocked after you leave.");
-        AwakeWarning.Title = L.T("可能存在冲突", "Possible conflict");
         CameraPrivacyButton.Content = L.T("打开摄像头隐私设置", "Open camera privacy settings");
         CameraCard.Header = L.T("摄像头", "Camera");
         if (_cameras.Count == 0) CameraBox.PlaceholderText = L.T("正在查找摄像头…", "Looking for cameras…");
@@ -787,10 +786,16 @@ public sealed partial class MainWindow : Window
                 $"Current power plan ({source}): screen off: {screenTimeout}; sleep: {sleepTimeout}; {lockText}.\n{after}");
         }
 
-        var conflict = PowerToysAwake.CheckConflict();
-        AwakeWarning.Message = conflict ?? "";
-        AwakeWarning.IsOpen = conflict is not null;
-        AwakeWarning.Visibility = conflict is null ? Visibility.Collapsed : Visibility.Visible;
+        // 跟随系统电源策略时是冲突（警告）；由『在吗』接管时只是提示锁屏后不会息屏（信息）
+        var awake = PowerToysAwake.Check(_settings.LockWhenAway);
+        if (awake is { } a)
+        {
+            AwakeWarning.Title = a.IsConflict ? L.T("可能存在冲突", "Possible conflict") : L.T("提示", "Note");
+            AwakeWarning.Severity = a.IsConflict ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+            AwakeWarning.Message = a.Message;
+        }
+        AwakeWarning.IsOpen = awake is not null;
+        AwakeWarning.Visibility = awake is null ? Visibility.Collapsed : Visibility.Visible;
         RefreshPowerInfo();
     }
 

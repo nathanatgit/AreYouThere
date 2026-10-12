@@ -12,7 +12,7 @@ internal sealed class AppSettings
     /// <summary>智能检测：只在停止键鼠操作满一个检测间隔后才用摄像头检测。默认开启；关闭时按固定间隔检测。</summary>
     public bool SmartDetection { get; set; } = true;
     /// <summary>坐姿检测：人脸中心低于坐姿线时提醒坐直，人脸面积超过上限时提醒离屏幕远一些。</summary>
-    public bool PostureCheck { get; set; } = true;
+    public bool PostureCheck { get; set; }
     /// <summary>坐姿线离画面底部的高度（百分比）。</summary>
     public double PostureLineFromBottomPercent { get; set; } = 40;
     /// <summary>人脸面积超过这个百分比时提醒离屏幕远一些。</summary>
