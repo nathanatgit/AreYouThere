@@ -25,6 +25,8 @@
   <ItemGroup>
     <Content Include="Assets\icon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\logo.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 托盘单色图标（深色/浅色任务栏），由 tools/make-tray-icon.ps1 生成 -->
+    <Content Include="Assets\tray-white.ico;Assets\tray-black.ico" CopyToOutputDirectory="PreserveNewest" />
     <!-- MSIX 磁贴/开始菜单图标，仅打包时需要 -->
     <Content Include="Assets\StoreLogo.png;Assets\Square44x44Logo.png;Assets\Square150x150Logo.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

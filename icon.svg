@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="151 152 951 951">
+  <!-- Vector redraw of icon.png; coordinates are icon.png pixels, the viewBox is the crop make-icon.ps1 uses. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#617e9f"/><stop offset="1" stop-color="#516c8e"/>
+    </linearGradient>
+    <linearGradient id="bezel" x1="0" y1="402" x2="0" y2="865" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ebeae8"/><stop offset=".8" stop-color="#e2e2e2"/><stop offset="1" stop-color="#c6cacf"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#405369"/><stop offset="1" stop-color="#3a4b5f"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="678" x2="0" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d6dade"/><stop offset="1" stop-color="#bfcad5"/>
+    </linearGradient>
+    <linearGradient id="neck" x1="0" y1="866" x2="0" y2="926" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8795a4"/><stop offset="1" stop-color="#c8ccd3"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="926" x2="0" y2="953" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dadc"/><stop offset="1" stop-color="#bec5cc"/>
+    </linearGradient>
+    <linearGradient id="moonFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fdf9ec"/><stop offset="1" stop-color="#f1e8d6"/>
+    </linearGradient>
+    <mask id="crescent" maskUnits="userSpaceOnUse" x="800" y="740" width="230" height="230">
+      <circle cx="915.6" cy="856.5" r="84.6" fill="#fff"/>
+      <circle cx="990.4" cy="840" r="97.9" fill="#000"/>
+    </mask>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#1c2a3c" flood-opacity=".28"/>
+    </filter>
+  </defs>
+
+  <rect x="151" y="152" width="951" height="950" rx="220" fill="url(#bg)"/>
+
+  <g fill="none" stroke="#c2d6ba" stroke-width="16" stroke-linecap="round">
+    <path d="M626.5 281V319M553 308.5L577 332.5M700 308.5L676 332.5"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M550 866H680L694 926H534Z" fill="url(#neck)"/>
+    <rect x="469" y="926" width="288" height="27" rx="13" fill="url(#base)"/>
+    <rect x="265" y="402" width="724" height="463" rx="26" fill="url(#bezel)"/>
+  </g>
+  <path d="M574 402H678L670 440H582Z" fill="#cdd1d6"/>
+  <rect x="303" y="445" width="647" height="353" rx="6" fill="url(#screen)"/>
+
+  <circle cx="626" cy="400.5" r="51.5" fill="#eeeae7"/>
+  <circle cx="626" cy="400.5" r="34.5" fill="#3f5166"/>
+  <circle cx="626" cy="401" r="12" fill="#86a2c1"/>
+
+  <g fill="none" stroke="#e6e5e4" stroke-width="16">
+    <path d="M484 561V499H545M709 499H770V561M484 654V710H545M709 710H770V654"/>
+  </g>
+  <circle cx="626.5" cy="597.5" r="77" fill="#e3e3e4"/>
+  <path d="M514 790C514 700 585 678 626 678C667 678 738 700 738 790Z" fill="url(#body)"/>
+
+  <g filter="url(#shadow)">
+    <circle cx="904.5" cy="856.5" r="128" fill="#475b6b" stroke="#bdd2b2" stroke-width="23"/>
+  </g>
+  <rect x="800" y="740" width="230" height="230" fill="url(#moonFill)" mask="url(#crescent)"/>
+  <path d="M806.6 774.1L986.9 954.4" stroke="#bdd2b2" stroke-width="25"/>
+  <circle cx="904.5" cy="856.5" r="128" fill="none" stroke="#bdd2b2" stroke-width="23"/>
+</svg>

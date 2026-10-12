@@ -11,6 +11,12 @@ internal sealed class AppSettings
     public uint IntervalSeconds { get; set; } = 30;
     /// <summary>智能检测：只在停止键鼠操作满一个检测间隔后才用摄像头检测。默认开启；关闭时按固定间隔检测。</summary>
     public bool SmartDetection { get; set; } = true;
+    /// <summary>智能检测下，停止操作后每次检测到人，下次检测间隔延长的步长（秒）；0 表示不递增。</summary>
+    public uint IntervalStepSeconds { get; set; }
+    /// <summary>递增方式：false 指数（每次翻倍），true 线性（每次加一个步长）。</summary>
+    public bool LinearGrowth { get; set; }
+    /// <summary>递增后的最长检测间隔（秒）。</summary>
+    public uint MaxIntervalSeconds { get; set; } = 600;
     /// <summary>坐姿检测：人脸中心低于坐姿线时提醒坐直，人脸面积超过上限时提醒离屏幕远一些。</summary>
     public bool PostureCheck { get; set; }
     /// <summary>坐姿线离画面底部的高度（百分比）。</summary>
@@ -20,6 +26,8 @@ internal sealed class AppSettings
     /// <summary>true：只在在场检测时顺便看坐姿；false：按 PostureIntervalSeconds 单独检测坐姿。</summary>
     public bool PostureFollowDetection { get; set; }
     public uint PostureIntervalSeconds { get; set; } = 600;
+    /// <summary>节电模式开启时暂停检测（默认），关闭后自动恢复；false 则节电模式下照常检测。</summary>
+    public bool PauseInBatterySaver { get; set; } = true;
     /// <summary>每个摄像头的画面旋转角度（顺时针 0/90/180/270），键为 CameraId。</summary>
     public Dictionary<string, int> CameraRotations { get; set; } = [];
     public bool PreviewEnabled { get; set; } = true;
@@ -38,10 +46,8 @@ internal sealed class AppSettings
     public AppTheme Theme { get; set; }
     /// <summary>界面语言："zh" / "en"；null 表示跟随 Windows 显示语言。</summary>
     public string? Language { get; set; }
-    /// <summary>离开后多少秒锁定；-1 表示延迟一个检测间隔。</summary>
+    /// <summary>检测到离开后多少秒锁定；0 为立即锁定。旧版本的 -1（延迟一个检测间隔）启动时换算成检测间隔秒数。</summary>
     public int LockDelaySeconds { get; set; } = 10;
-    /// <summary>选“自定义”时的锁定延迟（秒），切换到其他选项后仍保留，方便切回来。</summary>
-    public uint LockDelayCustomSeconds { get; set; } = 10;
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AreYouThere", "settings.json");

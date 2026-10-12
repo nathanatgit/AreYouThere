@@ -48,8 +48,8 @@ internal sealed class PresenceService : IDisposable
 
     /// <summary>true：离开后由本程序锁定电脑；false：交还系统电源策略。</summary>
     public bool LockWhenAway { get; set; }
-    /// <summary>离开多久后锁定；null 表示延迟一个检测间隔。</summary>
-    public TimeSpan? LockDelay { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>检测到离开后多久锁定；0 为立即锁定。</summary>
+    public TimeSpan LockDelay { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>人脸框至少占画面多少百分比才算“在电脑前”；远处的人或墙上的照片通常较小。0 表示任何人脸都算。</summary>
     public double MinFaceAreaPercent { get; set; } = 3;
     /// <summary>
@@ -57,6 +57,28 @@ internal sealed class PresenceService : IDisposable
     /// 关闭时按固定间隔检测。
     /// </summary>
     public bool SmartDetection { get; set; }
+    /// <summary>
+    /// 智能检测下的间隔递增：停止操作后每次检测到人，下次检测的间隔就延长一些，直到 MaxIntervalSeconds；
+    /// 有键鼠操作或没检测到人时回到原来的间隔。步长为 0 表示不递增。
+    /// </summary>
+    public uint IntervalStepSeconds { get; set; }
+    public bool LinearGrowth { get; set; }
+    public uint MaxIntervalSeconds { get; set; } = 600;
+    /// <summary>
+    /// 第 k 次连续检测到人之后，到下一次检测的间隔（k = 0 就是原来的间隔）。
+    /// 指数：基础 + 步长，之后每次翻倍（5 秒、1 分 5 秒、2 分 10 秒……）；线性：基础 + k × 步长（5 秒、1 分 5 秒、2 分 5 秒……）。
+    /// 都不超过最长间隔，也不小于基础间隔。
+    /// </summary>
+    public static TimeSpan CheckGap(uint baseSeconds, uint stepSeconds, uint maxSeconds, bool linear, int k)
+    {
+        if (k <= 0 || stepSeconds == 0) return TimeSpan.FromSeconds(baseSeconds);
+        double seconds = linear
+            ? baseSeconds + (double)k * stepSeconds
+            : (baseSeconds + (double)stepSeconds) * Math.Pow(2, Math.Min(k - 1, 30));
+        return TimeSpan.FromSeconds(Math.Max(baseSeconds, Math.Min(seconds, maxSeconds)));
+    }
+    // 停止操作后连续检测到人的次数，用来算递增的间隔
+    private int _presentChecks;
     /// <summary>
     /// 画面顺时针旋转角度（0/90/180/270）。有些摄像头送来的画面是横的或倒的，
     /// Windows 的人脸检测只认正立的人脸，所以检测和预览前都先转正。
@@ -193,6 +215,7 @@ internal sealed class PresenceService : IDisposable
     public void SetInterval(uint seconds)
     {
         _intervalSeconds = seconds;
+        _presentChecks = 0;
         // 从长间隔切到短间隔时不必等完旧周期
         var next = DateTimeOffset.UtcNow.AddSeconds(seconds);
         if (next < _nextDetection) _nextDetection = next;
@@ -335,8 +358,10 @@ internal sealed class PresenceService : IDisposable
                     try { await DetectLatestFrameAsync(); } catch { }
                 }
 
-                // 省电：看不到预览且离下次检测还早时，关闭摄像头流（指示灯也会熄灭）
-                var nextUse = PostureOnOwnSchedule && _nextPosture < _nextDetection ? _nextPosture : _nextDetection;
+                // 省电：看不到预览且离下次检测还早时，关闭摄像头流（指示灯也会熄灭）。
+                // 智能检测下正在用键鼠时，在场检测要等停止操作后才进行，不算“马上要用”，否则短间隔时摄像头会一直开着
+                var nextPresence = _usingInput ? DateTimeOffset.MaxValue : _nextDetection;
+                var nextUse = PostureOnOwnSchedule && _nextPosture < nextPresence ? _nextPosture : nextPresence;
                 if (_streaming && !_previewWanted && nextUse - DateTimeOffset.UtcNow > PauseThreshold)
                     await StopStreamAsync();
 
@@ -361,6 +386,7 @@ internal sealed class PresenceService : IDisposable
             _usingInput = false;
             return;
         }
+        _presentChecks = 0; // 一有操作，递增的间隔就回到原来的长度
         _nextDetection = now - idle + interval;
         if (_usingInput && _awaySince is null) return;
         _usingInput = true;
@@ -447,9 +473,17 @@ internal sealed class PresenceService : IDisposable
         {
             _awaySince = null;
             KeepAwake(true);
-            report(L.T("检测到你在电脑前，已保持唤醒", "Qualifying face detected; keeping the screen on"));
-            return now + interval;
+            if (!SmartDetection || IntervalStepSeconds == 0)
+            {
+                report(L.T("检测到你在电脑前，已保持唤醒", "Qualifying face detected; keeping the screen on"));
+                return now + interval;
+            }
+            var gap = CheckGap(_intervalSeconds, IntervalStepSeconds, MaxIntervalSeconds, LinearGrowth, ++_presentChecks);
+            var described = PowerPolicy.Describe(gap);
+            report(L.T($"检测到你在电脑前，已保持唤醒；{described}后再次检测", $"Qualifying face detected; keeping the screen on. Next check in {described}"));
+            return now + gap;
         }
+        _presentChecks = 0;
         if (!LockWhenAway)
         {
             _awaySince = null;
@@ -459,7 +493,7 @@ internal sealed class PresenceService : IDisposable
         }
 
         // 接管模式：锁定之前继续保持唤醒，不让系统超时抢先息屏
-        var delay = LockDelay ?? interval;
+        var delay = LockDelay;
         if (_awaySince is null)
         {
             _awaySince = now;
@@ -558,6 +592,7 @@ internal sealed class PresenceService : IDisposable
         _awaySince = null;
         _multipleFacesWarned = false;
         _usingInput = false;
+        _presentChecks = 0;
         StatusChanged?.Invoke(this, new(L.T("已关闭", "Off"), L.T("未检测", "Not checking")));
         KeepAwake(false);
     }

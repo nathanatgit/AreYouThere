@@ -66,7 +66,8 @@
     </Border>
 
   <!-- 启动时把键盘焦点放在滚动区域，避免焦点落在摄像头开关上被误按空格开启 -->
-  <ScrollViewer x:Name="RootScroll" Grid.Row="2" IsTabStop="True">
+  <!-- 关闭滚动锚定（NaN）：否则展开卡片时下方内容不动、页面往上滚，看起来像向上展开 -->
+  <ScrollViewer x:Name="RootScroll" Grid.Row="2" IsTabStop="True" VerticalAnchorRatio="NaN">
     <!-- 宽窗口：设置在左、预览在右；窄窗口：单列，预览插在“检测”之后。切换逻辑见 LayoutRoot_SizeChanged -->
     <Grid x:Name="LayoutRoot" Padding="32,20,32,32" MaxWidth="1100" ColumnSpacing="32" RowSpacing="18"
           SizeChanged="LayoutRoot_SizeChanged">
@@ -117,16 +118,44 @@
             <Button x:Name="RefreshCamerasButton" Click="RefreshCameras_Click" />
           </StackPanel>
         </toolkit:SettingsCard>
-        <toolkit:SettingsCard x:Name="SmartCard" FontSize="16">
-          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsCard.HeaderIcon>
-          <toolkit:SettingsCard.Description><TextBlock x:Name="SmartHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+        <!-- 智能检测：开关在标题行，展开后是检测间隔相关设置。智能检测开启时第一行是“停止操作多久后检测”，关闭时是固定的“检测间隔”；
+             递增步长只在智能检测开启时显示，步长不为 0 时再显示最长检测间隔和递增方式 -->
+        <toolkit:SettingsExpander x:Name="SmartCard" FontSize="16">
+          <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE765;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Description><TextBlock x:Name="SmartHintText" TextWrapping="Wrap" /></toolkit:SettingsExpander.Description>
           <ToggleSwitch x:Name="SmartSwitch" Toggled="SmartSwitch_Toggled" />
-        </toolkit:SettingsCard>
-        <!-- 紧跟智能检测：开启时它的含义是“停止操作多久后检测”。点开后滚动选择时 / 分 / 秒 -->
-        <toolkit:SettingsCard x:Name="IntervalCard" FontSize="16">
-          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE823;" /></toolkit:SettingsCard.HeaderIcon>
-          <local:DurationPicker x:Name="IntervalPicker" />
-        </toolkit:SettingsCard>
+          <toolkit:SettingsExpander.Items>
+            <toolkit:SettingsCard x:Name="IntervalCard" FontSize="16">
+              <local:DurationPicker x:Name="IntervalPicker" ShowHours="False" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Name="IntervalStepCard" FontSize="16">
+              <toolkit:SettingsCard.Description><TextBlock x:Name="IntervalStepHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+              <local:DurationPicker x:Name="IntervalStepPicker" ShowHours="False" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Name="MaxIntervalCard" FontSize="16">
+              <toolkit:SettingsCard.Description><TextBlock x:Name="MaxIntervalHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+              <local:DurationPicker x:Name="MaxIntervalPicker" ShowHours="False" />
+            </toolkit:SettingsCard>
+            <!-- 示例序列放在各自选项下面，只显示选中的那一项 -->
+            <toolkit:SettingsCard x:Name="IntervalGrowthCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
+              <!-- 不用 RadioButtons：它让每个选项一样高，未选中的选项下面会留出说明文字的空白 -->
+              <StackPanel Spacing="4">
+                <RadioButton x:Name="GrowthExponentialOption" GroupName="IntervalGrowth" Checked="GrowthOption_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="GrowthExponentialText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="GrowthExponentialNote" Style="{StaticResource Hint}" />
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="GrowthLinearOption" GroupName="IntervalGrowth" Checked="GrowthOption_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="GrowthLinearText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="GrowthLinearNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+                  </StackPanel>
+                </RadioButton>
+              </StackPanel>
+            </toolkit:SettingsCard>
+          </toolkit:SettingsExpander.Items>
+        </toolkit:SettingsExpander>
         <!-- 坐姿检测：展开后设置坐姿检测间隔 -->
         <toolkit:SettingsExpander x:Name="PostureCard" FontSize="16">
           <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE7BE;" /></toolkit:SettingsExpander.HeaderIcon>
@@ -136,16 +165,18 @@
             <!-- 跟随：只在在场检测时顺便看坐姿；自定义：按自己的间隔检测，打字时也照常检测 -->
             <toolkit:SettingsCard x:Name="PostureIntervalPanel" FontSize="16" ContentAlignment="Left">
               <StackPanel Spacing="8">
-                <RadioButtons x:Name="PostureIntervalModeButtons" SelectionChanged="PostureIntervalMode_SelectionChanged">
-                  <RadioButton x:Name="PostureFollowOption">
+                <!-- 不用 RadioButtons：它让每个选项一样高，未选中的选项下面会留出说明文字的空白 -->
+                <TextBlock x:Name="PostureIntervalHeader" />
+                <StackPanel Spacing="4">
+                  <RadioButton x:Name="PostureFollowOption" GroupName="PostureInterval" Checked="PostureIntervalMode_Checked">
                     <!-- 智能检测说明紧跟在“跟随”选项下面，因为它只影响这个选项 -->
                     <StackPanel Spacing="2">
                       <TextBlock x:Name="PostureFollowText" TextWrapping="Wrap" />
                       <TextBlock x:Name="PostureFollowNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
                     </StackPanel>
                   </RadioButton>
-                  <RadioButton x:Name="PostureCustomOption" />
-                </RadioButtons>
+                  <RadioButton x:Name="PostureCustomOption" GroupName="PostureInterval" Checked="PostureIntervalMode_Checked" />
+                </StackPanel>
                 <local:DurationPicker x:Name="PostureIntervalPicker" Visibility="Collapsed" />
               </StackPanel>
             </toolkit:SettingsCard>
@@ -155,29 +186,34 @@
         <TextBlock x:Name="AwayHeader" Style="{StaticResource SectionHeader}" />
         <!-- PowerToys Awake 提示：跟随系统电源策略时是冲突警告，由『在吗』接管时只是信息提示 -->
         <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" Margin="0,0,0,4" />
-        <toolkit:SettingsCard x:Name="AwayCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
-          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
-          <!-- 标题、选项在上，说明文字放在最后 -->
-          <StackPanel Spacing="8">
-            <RadioButtons x:Name="AwayModeButtons" HorizontalAlignment="Left" SelectedIndex="0" SelectionChanged="AwayModeButtons_SelectionChanged">
-              <RadioButton x:Name="AwayFollowOption" />
-              <RadioButton x:Name="AwayLockOption" />
-            </RadioButtons>
-            <TextBlock x:Name="PolicyText" Style="{StaticResource Hint}" />
-          </StackPanel>
-        </toolkit:SettingsCard>
-        <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16" Visibility="Collapsed">
-          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE916;" /></toolkit:SettingsCard.HeaderIcon>
-          <!-- 立即 / 一个在场检测间隔 / 自定义（自定义时显示时间选择器） -->
-          <StackPanel Spacing="8" HorizontalAlignment="Right">
-            <ComboBox x:Name="LockDelayBox" MinWidth="200" HorizontalAlignment="Right" SelectionChanged="LockDelayBox_SelectionChanged">
-              <ComboBoxItem Tag="immediate" />
-              <ComboBoxItem Tag="interval" />
-              <ComboBoxItem Tag="custom" />
-            </ComboBox>
-            <local:DurationPicker x:Name="LockDelayPicker" HorizontalAlignment="Right" Visibility="Collapsed" />
-          </StackPanel>
-        </toolkit:SettingsCard>
+        <!-- 离开电脑后：展开后是两个选项和锁定时机（只在锁定模式下显示）。默认展开，选项一直可见。
+             说明文字放在选中的选项下面；不用 RadioButtons，它让每个选项一样高，未选中的选项下面会留出空白 -->
+        <toolkit:SettingsExpander x:Name="AwayCard" FontSize="16" IsExpanded="True">
+          <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Items>
+            <toolkit:SettingsCard FontSize="16" ContentAlignment="Left">
+              <StackPanel Spacing="4">
+                <RadioButton x:Name="AwayFollowOption" GroupName="AwayMode" Checked="AwayMode_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="AwayFollowText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="AwayFollowNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="AwayLockOption" GroupName="AwayMode" Checked="AwayMode_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="AwayLockText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="AwayLockNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+                  </StackPanel>
+                </RadioButton>
+              </StackPanel>
+            </toolkit:SettingsCard>
+            <!-- 只用时长选择器：0 秒为立即锁定，大于 0 为倒计时 -->
+            <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16" Visibility="Collapsed">
+              <toolkit:SettingsCard.Description><TextBlock x:Name="LockDelayHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+              <local:DurationPicker x:Name="LockDelayPicker" ShowHours="False" />
+            </toolkit:SettingsCard>
+          </toolkit:SettingsExpander.Items>
+        </toolkit:SettingsExpander>
 
         <TextBlock x:Name="OtherHeader" Style="{StaticResource SectionHeader}" />
         <toolkit:SettingsCard x:Name="StartupCard" FontSize="16">
@@ -190,6 +226,25 @@
             </StackPanel>
           </toolkit:SettingsCard.Description>
           <ToggleSwitch x:Name="StartupSwitch" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
+        </toolkit:SettingsCard>
+        <!-- 节电模式：默认暂停检测，交给系统电源设置；也可以选择继续检测 -->
+        <toolkit:SettingsCard x:Name="BatterySaverCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE83F;" /></toolkit:SettingsCard.HeaderIcon>
+          <!-- 说明放在各自选项下面，只显示选中的那一项；不用 RadioButtons，它让每个选项一样高，未选中的选项下面会留出空白 -->
+          <StackPanel Spacing="4">
+            <RadioButton x:Name="BatterySaverPauseOption" GroupName="BatterySaver" Checked="BatterySaverOption_Checked">
+              <StackPanel Spacing="2">
+                <TextBlock x:Name="BatterySaverPauseText" TextWrapping="Wrap" />
+                <TextBlock x:Name="BatterySaverPauseNote" Style="{StaticResource Hint}" />
+              </StackPanel>
+            </RadioButton>
+            <RadioButton x:Name="BatterySaverKeepOption" GroupName="BatterySaver" Checked="BatterySaverOption_Checked">
+              <StackPanel Spacing="2">
+                <TextBlock x:Name="BatterySaverKeepText" TextWrapping="Wrap" />
+                <TextBlock x:Name="BatterySaverKeepNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+              </StackPanel>
+            </RadioButton>
+          </StackPanel>
         </toolkit:SettingsCard>
         <!-- 托盘通知：默认在全屏应用（如游戏）前台时不弹，避免打断 -->
         <toolkit:SettingsCard x:Name="NotificationCard" FontSize="16" ContentAlignment="Vertical" HorizontalContentAlignment="Left">

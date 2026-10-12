@@ -134,7 +134,7 @@ internal static class PowerToysAwake
         {
             // 只让电脑不睡眠时，『在吗』照常锁定、屏幕照常息屏，不必提示
             if (!keepDisplayOn) return null;
-            return (L.T($"PowerToys Awake 当前为“{modeText}”模式并保持屏幕常亮：『在吗』仍会在你离开后锁定电脑，但锁屏后屏幕也不会息屏。",
+            return (L.T($"PowerToys Awake 当前为“{modeText}”模式并保持屏幕常亮：『在吗』仍会在你离开后锁定电脑，但锁屏后不会息屏。",
                 $"PowerToys Awake is set to \"{modeText}\" and keeps the screen on. AreYouThere still locks the PC after you leave, but the screen won't turn off after locking."), false);
         }
 

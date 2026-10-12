@@ -1,6 +1,6 @@
-# Shared by make-banner.ps1 and make-profile-banner.ps1: renders an HTML page to a
-# transparent PNG with headless Edge at 2x (so a 1280px-wide page becomes 2560px).
-function Render-Banner([string]$Html, [int]$Width, [int]$Height, [string]$Out) {
+# Shared by make-banner.ps1, make-profile-banner.ps1 and make-tray-icon.ps1: renders an HTML page
+# to a transparent PNG with headless Edge, at 2x by default (so a 1280px-wide page becomes 2560px).
+function Render-Banner([string]$Html, [int]$Width, [int]$Height, [string]$Out, [int]$Scale = 2) {
   $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
             "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $edge) { throw 'Microsoft Edge not found.' }
@@ -10,7 +10,7 @@ function Render-Banner([string]$Html, [int]$Width, [int]$Height, [string]$Out) {
   $Out = [IO.Path]::GetFullPath($Out)
   Start-Process $edge -Wait -WindowStyle Hidden -ArgumentList @(
     '--headless=new', '--disable-gpu', '--hide-scrollbars', '--allow-file-access-from-files',
-    '--force-device-scale-factor=2', '--default-background-color=00000000',
+    "--force-device-scale-factor=$Scale",'--default-background-color=00000000',
     "--window-size=$Width,$Height", "--screenshot=`"$Out`"", ([Uri]$page).AbsoluteUri)
   Remove-Item $page
   Get-Item $Out | Select-Object Name, Length

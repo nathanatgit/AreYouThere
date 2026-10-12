@@ -14,7 +14,7 @@ namespace AreYouThere;
 /// </summary>
 internal sealed partial class DurationPicker : Grid
 {
-    private const double ItemHeight = 40, ColumnWidth = 84;
+    private const double ItemHeight = 40, ColumnWidth = 64;
     private const int VisibleRows = 9;
 
     private readonly Button _button;
@@ -27,9 +27,31 @@ internal sealed partial class DurationPicker : Grid
     private readonly TextBlock _onAccentProbe;
     private string[] _units = ["h", "min", "s"];
     private TimeSpan _value;
+    // “时”一列用到的列定义和元素，ShowHours=false 时收起
+    private readonly List<ColumnDefinition> _hourColumns = [];
+    private readonly List<UIElement> _hourElements = [];
+    private bool _showHours = true;
 
     public TimeSpan Minimum { get; set; } = TimeSpan.FromSeconds(5);
     public TimeSpan Maximum { get; set; } = new(23, 59, 59);
+
+    /// <summary>
+    /// 是否显示“时”一列。隐私相关的间隔和延迟不该长到以小时计，这些选择器只显示分和秒，最长 59 分 59 秒。
+    /// </summary>
+    public bool ShowHours
+    {
+        get => _showHours;
+        set
+        {
+            _showHours = value;
+            foreach (var column in _hourColumns) column.Width = new GridLength(value ? ColumnWidth : 0);
+            foreach (var element in _hourElements) element.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+            if (!value && Maximum > MaxWithoutHours) Maximum = MaxWithoutHours;
+            Value = _value;
+        }
+    }
+
+    private static readonly TimeSpan MaxWithoutHours = new(0, 59, 59);
 
     /// <summary>用户点 ✓ 改动后触发（代码设置 Value 不触发）。</summary>
     public event EventHandler<TimeSpan>? ValueChanged;
@@ -43,7 +65,7 @@ internal sealed partial class DurationPicker : Grid
         Children.Add(_button);
         _flyoutContent = BuildFlyoutContent();
         _flyoutContent.ActualThemeChanged += (_, _) => { foreach (var c in _columns) c.RefreshHighlight(); };
-        _flyout = new Flyout { Content = _flyoutContent, Placement = FlyoutPlacementMode.Bottom };
+        _flyout = new Flyout { Content = _flyoutContent };
         // 弹出层不会自动继承窗口里选的主题，打开时按按钮当前的主题设置
         _flyout.Opening += (_, _) =>
         {
@@ -56,7 +78,7 @@ internal sealed partial class DurationPicker : Grid
             _columns[1].ScrollTo(_value.Minutes, animate: false);
             _columns[2].ScrollTo(_value.Seconds, animate: false);
         });
-        _button.Click += (_, _) => _flyout.ShowAt(_button);
+        _button.Click += (_, _) => ShowFlyout();
         UpdateDisplay();
     }
 
@@ -82,11 +104,15 @@ internal sealed partial class DurationPicker : Grid
         var grid = new Grid();
         for (var i = 0; i < 3; i++)
         {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColumnWidth) });
+            var column = new ColumnDefinition { Width = new GridLength(ColumnWidth) };
+            grid.ColumnDefinitions.Add(column);
             _display[i] = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             SetColumn(_display[i], i);
             grid.Children.Add(_display[i]);
-            if (i > 0) grid.Children.Add(Divider(i, vertical: true));
+            Rectangle? divider = i > 0 ? Divider(i, vertical: true) : null;
+            if (divider is not null) grid.Children.Add(divider);
+            if (i == 0) { _hourColumns.Add(column); _hourElements.Add(_display[i]); }
+            if (i == 1) _hourElements.Add(divider!); // “时”和“分”之间的分隔线
         }
         return new Button
         {
@@ -111,7 +137,8 @@ internal sealed partial class DurationPicker : Grid
 
         for (var i = 0; i < 3; i++)
         {
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ColumnWidth) });
+            var column = new ColumnDefinition { Width = new GridLength(ColumnWidth) };
+            root.ColumnDefinitions.Add(column);
             // 灰色说明层级：12 号、系统次要文字颜色
             _headers[i] = Themed<TextBlock>("<TextBlock FontSize=\"12\" HorizontalAlignment=\"Center\" Margin=\"0,8,0,4\" Foreground=\"{ThemeResource TextFillColorSecondaryBrush}\" />");
             _headers[i].Text = _units[i];
@@ -121,11 +148,13 @@ internal sealed partial class DurationPicker : Grid
             SetRow(viewer, 1);
             SetColumn(viewer, i);
             root.Children.Add(viewer);
+            if (i == 0) { _hourColumns.Add(column); _hourElements.Add(_headers[i]); _hourElements.Add(viewer); }
             if (i > 0)
             {
                 var divider = Divider(i, vertical: true);
                 SetRow(divider, 1);
                 root.Children.Add(divider);
+                if (i == 1) _hourElements.Add(divider);
             }
         }
 
@@ -150,6 +179,33 @@ internal sealed partial class DurationPicker : Grid
         SetColumnSpan(buttons, 3);
         root.Children.Add(buttons);
         return root;
+    }
+
+    // 底部 ✓ ✗ 一行（按钮 40 + 上下边距 8 + 分隔线 1）和弹出层边框
+    private const double ButtonRowHeight = 49, PresenterBorder = 2;
+
+    /// <summary>
+    /// 和 Windows 时间选择器一样：弹出层盖在按钮上，中间高亮的一行正好压在按钮上。
+    /// 靠近窗口上下边缘放不下时，只平移到刚好放进窗口为止；位置自己算好，系统就不会把它翻到别处去。
+    /// </summary>
+    private void ShowFlyout()
+    {
+        // 用“分”的列标题量高度：“时”一列可能被收起
+        _headers[1].Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var header = _headers[1].DesiredSize.Height;
+        var bandTop = header + ItemHeight * (VisibleRows / 2);
+        var y = (_button.ActualHeight - ItemHeight) / 2 - bandTop;
+        var height = header + ItemHeight * VisibleRows + ButtonRowHeight + PresenterBorder;
+        var buttonTop = _button.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+        var rootHeight = XamlRoot?.Size.Height ?? double.PositiveInfinity;
+        var top = Math.Max(0, Math.Min(buttonTop + y, rootHeight - height));
+        y = top - buttonTop;
+        // 指定坐标时默认放在该点上方居中；要让弹出层左上角落在该点上，需指定 BottomEdgeAlignedLeft
+        _flyout.ShowAt(_button, new FlyoutShowOptions
+        {
+            Position = new Windows.Foundation.Point(0, y),
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft
+        });
     }
 
     private void Accept()

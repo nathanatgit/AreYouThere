@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.Win32;
 using System.Runtime.InteropServices;
 
 namespace AreYouThere.Services;
@@ -14,7 +15,7 @@ internal sealed class TrayService : IDisposable
     public static readonly uint StartupLaunchMessage = RegisterWindowMessage("AreYouThere.StartupLaunch");
     private static readonly uint TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
 
-    private const uint WM_APP = 0x8000, WM_NULL = 0x0000, WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
+    private const uint WM_APP = 0x8000, WM_NULL = 0x0000, WM_SETTINGCHANGE = 0x001A,WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
     private const uint MF_STRING = 0x0, MF_CHECKED = 0x8, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x0100, TPM_RIGHTBUTTON = 0x0002;
     private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_INFO = 0x10;
     private const uint NIM_ADD = 0x0, NIM_MODIFY = 0x1, NIM_DELETE = 0x2;
@@ -23,7 +24,9 @@ internal sealed class TrayService : IDisposable
     private const int SM_CXSMICON = 49, GWLP_WNDPROC = -4;
     private const uint CallbackMessage = WM_APP + 41;
 
-    private readonly IntPtr _hwnd, _oldProc, _icon;
+    private readonly IntPtr _hwnd, _oldProc;
+    private readonly string _fallbackIconPath;
+    private IntPtr _icon;
     private readonly WndProc _newProc;
     private readonly Func<bool> _isEnabled;
     private readonly Action _toggle, _open, _exit;
@@ -39,9 +42,8 @@ internal sealed class TrayService : IDisposable
     {
         _isEnabled = isEnabled; _toggle = toggle; _open = open; _exit = exit;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
-        var size = GetSystemMetricsForDpi(SM_CXSMICON, GetDpiForWindow(_hwnd));
-        _icon = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, size, size, LR_LOADFROMFILE);
-        if (_icon == IntPtr.Zero) _icon = LoadIcon(IntPtr.Zero, (IntPtr)32512);
+        _fallbackIconPath = iconPath;
+        _icon = LoadTrayIcon();
         _newProc = WindowProc;
         _oldProc = SetWindowLongPtr(_hwnd, GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_newProc));
         AddIcon();
@@ -70,6 +72,27 @@ internal sealed class TrayService : IDisposable
         Shell_NotifyIcon(NIM_ADD, ref data);
     }
 
+    /// <summary>托盘用单色图标：浅色任务栏用黑色，深色任务栏用白色；找不到时退回彩色应用图标。</summary>
+    private IntPtr LoadTrayIcon()
+    {
+        var light = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme", 0) is int v && v == 1;
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", light ? "tray-black.ico" : "tray-white.ico");
+        if (!File.Exists(path)) path = _fallbackIconPath;
+        var size = GetSystemMetricsForDpi(SM_CXSMICON, GetDpiForWindow(_hwnd));
+        var icon = LoadImage(IntPtr.Zero, path, IMAGE_ICON, size, size, LR_LOADFROMFILE);
+        return icon != IntPtr.Zero ? icon : LoadIcon(IntPtr.Zero, (IntPtr)32512);
+    }
+
+    /// <summary>任务栏深浅色切换后换上对应颜色的图标。</summary>
+    private void UpdateIcon()
+    {
+        var old = _icon;
+        _icon = LoadTrayIcon();
+        var data = NewData(NIF_ICON);
+        Shell_NotifyIcon(NIM_MODIFY, ref data);
+        DestroyIcon(old);
+    }
+
     private NOTIFYICONDATA NewData(uint flags) => new()
     {
         cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATA>(), hWnd = _hwnd, uID = 1,
@@ -85,6 +108,7 @@ internal sealed class TrayService : IDisposable
             else if (action == WM_RBUTTONUP) ShowMenu();
         }
         else if (msg == TaskbarCreatedMessage) AddIcon(); // 资源管理器重启后托盘图标会丢失，需要重新添加
+        else if (msg == WM_SETTINGCHANGE && lParam != IntPtr.Zero && Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet") UpdateIcon();
         else if (msg == ShowWindowMessage) { _open(); return IntPtr.Zero; }
         else if (msg == StartupLaunchMessage) { StartupLaunchRequested?.Invoke(); return IntPtr.Zero; }
         else if (msg == WM_WTSSESSION_CHANGE)
