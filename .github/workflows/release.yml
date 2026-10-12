@@ -166,21 +166,9 @@ jobs:
         run: |
           $v = '${{ steps.version.outputs.value }}'
           $files = @(Get-ChildItem out -File | Where-Object { $_.Extension -in '.zip', '.msi', '.exe', '.msixbundle' } | ForEach-Object FullName)
-          $signNote = if ($env:SIGNED -eq 'true') { '' } else { "`n> ⚠️ exe / msi 未签名，Windows 可能提示“未知发布者”，点“更多信息 → 仍要运行”即可。msixbundle 是提交 Microsoft Store 用的包，不能直接双击安装；ARM 设备请从 [Microsoft Store](https://apps.microsoft.com/detail/9N4T5SJXMJH3) 安装。`n" }
-          $notes = @"
-          **推荐从 [Microsoft Store](https://apps.microsoft.com/detail/9N4T5SJXMJH3) 安装**：自动更新，支持 x86 / x64 / ARM64，没有“未知发布者”提示。
-
-          ## 或者直接下载
-
-          | 文件 | 说明 |
-          |---|---|
-          | ``AreYouThere-$v-win-x64.msi`` | **推荐**：安装版（64 位），带开始菜单快捷方式，可在“应用”中卸载 |
-          | ``AreYouThere-$v-win-x86.msi`` | 安装版（32 位系统） |
-          | ``AreYouThere-$v-win-x64-portable.exe`` | 便携版：单个 exe，下载即用，不需要安装 |
-          | ``AreYouThere-$v-win-x86-portable.exe`` | 便携版（32 位系统） |
-          | ``AreYouThere-$v-win-x64.zip`` / ``win-x86.zip`` | 文件夹版：解压后运行 ``AreYouThere.exe`` |
-          | ``AreYouThere-$v.msixbundle`` | MSIX 包，含 x86 / x64 / **ARM64**（Microsoft Store 版本使用） |
-          $signNote
-          「在吗」完全离线运行，不联网、不上传任何数据。需要 Windows 10 1809 或更高版本。
-          "@
-          gh release create "v$v" @files --title "在吗 AreYouThere v$v" --notes $notes --generate-notes --target '${{ github.sha }}'
+          # 说明文字放在 build/release-notes.md：中文弯引号写在 pwsh 字符串里会被当成引号而导致解析失败
+          $notes = [IO.File]::ReadAllText('build/release-notes.md').Replace('{VERSION}', $v)
+          $notes = if ($env:SIGNED -eq 'true') { $notes -replace '(?s)<!-- unsigned -->.*?<!-- /unsigned -->\r?\n?', '' } else { $notes -replace '<!-- /?unsigned -->\r?\n?', '' }
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          [IO.File]::WriteAllText($notesFile, $notes, [Text.UTF8Encoding]::new($false))
+          gh release create "v$v" @files --title "在吗 AreYouThere v$v" --notes-file $notesFile --generate-notes --target '${{ github.sha }}'
