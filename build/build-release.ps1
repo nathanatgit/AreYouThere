@@ -17,6 +17,8 @@
     AreYouThere-<ver>-win-<arch>.msi            安装到 Program Files，带开始菜单快捷方式
     AreYouThere-<ver>.msixbundle                x86/x64/arm64 合一的 MSIX 包
   提供 -CertPath 时对 exe/msi/msix/msixbundle 签名；MSIX 必须签名才能安装，Publisher 必须与证书主题一致。
+  上架 Microsoft Store 时不用自己签名（商店会签），但 -IdentityName / -Publisher / -PublisherDisplayName
+  必须填 Partner Center 分配的值，见 docs/microsoft-store.md。
 #>
 param(
     [Parameter(Mandatory)] [string] $Version,
@@ -24,7 +26,10 @@ param(
     [string[]] $Kinds = @('zip', 'portable', 'msi', 'msix'),
     [switch] $Bundle,
     [string] $OutDir = (Join-Path $PSScriptRoot '..\out'),
+    # MSIX 身份。上架 Microsoft Store 时三者必须与 Partner Center“产品标识”页面上的值完全一致
     [string] $Publisher = 'CN=HGY',
+    [string] $IdentityName = 'AreYouThere',
+    [string] $PublisherDisplayName = 'HGY',
     [string] $CertPath,
     [string] $CertPassword,
     [string] $Wix = 'wix'
@@ -123,7 +128,9 @@ if ($Kinds -contains 'msix') {
     $original = [IO.File]::ReadAllText($manifest)
     try {
         $patched = $original -replace '(<Identity [^>]*Version=")[^"]*', "`${1}$msixVersion" `
-                             -replace '(<Identity [^>]*Publisher=")[^"]*', "`${1}$Publisher"
+                             -replace '(<Identity [^>]*Publisher=")[^"]*', "`${1}$Publisher" `
+                             -replace '(<Identity Name=")[^"]*', "`${1}$IdentityName" `
+                             -replace '<PublisherDisplayName>[^<]*</PublisherDisplayName>', "<PublisherDisplayName>$PublisherDisplayName</PublisherDisplayName>"
         [IO.File]::WriteAllText($manifest, $patched, [Text.UTF8Encoding]::new($false))
         $pkgDir = Join-Path $work 'msixpkg\'
         Remove-Item $pkgDir -Recurse -Force -ErrorAction SilentlyContinue

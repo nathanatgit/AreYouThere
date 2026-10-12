@@ -54,6 +54,10 @@ dotnet build AreYouThere\AreYouThere.csproj -p:Platform=x64
 
 `AreYouThere\Assets\icon.ico` 和 `AreYouThere\Assets\logo.png` 由仓库根目录的 `icon.png` 生成，见 `tools\make-icon.ps1`。
 
+## 隐私
+
+「在吗」完全离线运行，不收集任何数据，详见 [隐私政策](PRIVACY.md)。上架 Microsoft Store 的步骤见 [docs/microsoft-store.md](docs/microsoft-store.md)。
+
 ## 许可证
 
 [MIT](LICENSE)

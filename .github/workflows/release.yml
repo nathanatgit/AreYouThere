@@ -4,10 +4,15 @@
 #   x86 / x64：MSI 安装包、单文件便携版 exe、zip（文件夹版）
 #   msixbundle：x86 + x64 + arm64（ARM64 只通过 MSIX 发布）
 #
-# 可选签名（不配置也能发布，但未签名的 MSIX 无法安装）：
+# MSIX 身份（Settings › Secrets and variables › Actions › Variables）。上架 Microsoft Store 时
+# 填 Partner Center“产品标识”页面上的值，商店会负责签名，见 docs/microsoft-store.md：
+#   MSIX_IDENTITY_NAME            Package/Identity/Name，例如 12345HGY.AreYouThere
+#   MSIX_PUBLISHER                Package/Identity/Publisher，例如 CN=XXXXXXXX-XXXX-...
+#   MSIX_PUBLISHER_DISPLAY_NAME   Package/Properties/PublisherDisplayName
+#
+# 可选的自有证书签名（不配置也能发布；exe/msi 会提示“未知发布者”）：
 #   Secrets  SIGNING_CERT_BASE64   .pfx 证书的 base64
-#            SIGNING_CERT_PASSWORD .pfx 密码
-#   Variable MSIX_PUBLISHER        与证书主题完全一致，例如 CN=HGY
+#            SIGNING_CERT_PASSWORD .pfx 密码（此时 MSIX_PUBLISHER 必须与证书主题一致）
 name: Release
 
 on:
@@ -79,13 +84,17 @@ jobs:
         env:
           CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
           PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=HGY' }}
+          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'AreYouThere' }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'HGY' }}
         run: |
           $params = @{
-            Version   = '${{ steps.version.outputs.value }}'
-            Arch      = '${{ matrix.arch }}'
-            Kinds     = '${{ matrix.kinds }}' -split ','
-            OutDir    = 'out'
-            Publisher = $env:PUBLISHER
+            Version              = '${{ steps.version.outputs.value }}'
+            Arch                 = '${{ matrix.arch }}'
+            Kinds                = '${{ matrix.kinds }}' -split ','
+            OutDir               = 'out'
+            Publisher            = $env:PUBLISHER
+            IdentityName         = $env:IDENTITY_NAME
+            PublisherDisplayName = $env:PUBLISHER_DISPLAY_NAME
           }
           if ('${{ steps.cert.outputs.path }}') { $params.CertPath = '${{ steps.cert.outputs.path }}'; $params.CertPassword = $env:CERT_PASSWORD }
           ./build/build-release.ps1 @params
@@ -157,7 +166,7 @@ jobs:
         run: |
           $v = '${{ steps.version.outputs.value }}'
           $files = @(Get-ChildItem out -File | Where-Object { $_.Extension -in '.zip', '.msi', '.exe', '.msixbundle' } | ForEach-Object FullName)
-          $signNote = if ($env:SIGNED -eq 'true') { '' } else { "`n> ⚠️ 本版本未签名：Windows 可能提示“未知发布者”；msixbundle 需要签名后才能安装。`n" }
+          $signNote = if ($env:SIGNED -eq 'true') { '' } else { "`n> ⚠️ exe / msi 未签名，Windows 可能提示“未知发布者”，点“更多信息 → 仍要运行”即可。msixbundle 是提交 Microsoft Store 用的包，不能直接双击安装；ARM 设备请从 Microsoft Store 安装。`n" }
           $notes = @"
           ## 下载哪个？
 
@@ -168,7 +177,7 @@ jobs:
           | ``AreYouThere-$v-win-x64-portable.exe`` | 便携版：单个 exe，下载即用，不需要安装 |
           | ``AreYouThere-$v-win-x86-portable.exe`` | 便携版（32 位系统） |
           | ``AreYouThere-$v-win-x64.zip`` / ``win-x86.zip`` | 文件夹版：解压后运行 ``AreYouThere.exe`` |
-          | ``AreYouThere-$v.msixbundle`` | MSIX 包，含 x86 / x64 / **ARM64**（ARM 设备请用这个） |
+          | ``AreYouThere-$v.msixbundle`` | MSIX 包，含 x86 / x64 / **ARM64**（Microsoft Store 版本使用） |
           $signNote
           「在吗」完全离线运行，不联网、不上传任何数据。需要 Windows 10 1809 或更高版本。
           "@
