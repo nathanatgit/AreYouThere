@@ -1,4 +1,4 @@
-<h1><img src="AreYouThere/Assets/logo.png" alt="AreYouThere 应用图标" width="48" height="48" align="absmiddle"> 在吗 AreYouThere</h1>
+<img src="docs/banner.png" width="100%" alt="在吗 AreYouThere：用普通摄像头判断你在不在电脑前，在的时候保持亮屏，离开后自动锁定">
 
 [![Release downloads](https://img.shields.io/github/downloads/nathanatgit/AreYouThere/total?label=release%20downloads&color=0078D4)](https://github.com/nathanatgit/AreYouThere/releases)
 
