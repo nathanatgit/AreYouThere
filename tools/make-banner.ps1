@@ -15,8 +15,9 @@ html,body{margin:0;background:transparent}
   background:linear-gradient(90deg,transparent 0,#0b3a66 35%,#0e4f8c 100%)}
 .txt{position:absolute;left:64px;top:0;bottom:0;width:560px;display:flex;flex-direction:column;justify-content:center}
 .k{font-size:16px;letter-spacing:.06em;text-transform:uppercase;color:#4cc2ff;font-weight:600}
-.t{font-size:56px;font-weight:700;line-height:1.1;margin:8px 0 10px;letter-spacing:-.01em}
-.t span{font-weight:600;opacity:.92}
+.t{font-size:50px;font-weight:700;line-height:1.1;margin:8px 0 10px;letter-spacing:-.01em}
+.t{display:flex;align-items:center;gap:14px}
+.logo{width:54px;height:54px;flex:none;color:#fff}
 .g{font-size:20px;white-space:nowrap;line-height:1.45;color:#c8ccd6}
 .ns{display:flex;flex-direction:column;gap:6px;margin-top:12px}
 .n{display:flex;align-items:center;gap:12px;font-size:18px;color:#8fd8ff}
@@ -24,11 +25,11 @@ html,body{margin:0;background:transparent}
 .chips{display:flex;gap:10px;margin-top:20px}
 .chips span{font-size:16px;font-weight:600;padding:6px 16px;border-radius:999px;
   border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06)}
-.shot{position:absolute;left:650px;top:132px;width:580px;clip-path:inset(0 round 12px 12px 0 0);
-  filter:drop-shadow(0 16px 40px rgba(0,0,0,.5))}
+.shot{position:absolute;left:650px;top:88px;width:580px;height:224px;object-fit:cover;object-position:top;border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.5)}
 </style><div class="b"><div class="glow"></div>
-<div class="txt"><div class="k">C# · WinUI 3 · Windows</div><div class="t">在吗 · AreYouThere</div>
-<div class="g">基于普通摄像头的存在感知（Presence Sensing）轻量化实现：<br>人离开后自动锁定。</div>
+<div class="txt"><div class="k">C# · WinUI 3 · Windows</div><div class="t"><svg class="logo" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="5" r="2.4" fill="currentColor" stroke="none"/><rect x="4" y="10" width="40" height="27" rx="3.5"/><path d="M24 37v5M16 43h16"/><path d="M12 18v-3h3M33 15h3v3M36 29v3h-3M15 32h-3v-3"/><circle cx="24" cy="21" r="3.6"/><path d="M17.5 31.5c1.4-3.6 3.8-5.2 6.5-5.2s5.1 1.6 6.5 5.2"/></svg>在吗 · AreYouThere</div>
+<div class="g">基于普通摄像头的存在感知（Presence Sensing）轻量化实现：<br>人在时保持亮屏，人离开后自动锁定。</div>
 <div class="ns"><div class="n"><span class="i"></span>摄像头按需开启：检测时短暂亮起，操作键鼠时不检测。</div>
 <div class="n"><span class="i"></span>兼容 PowerToys Awake：开着 Awake，离开后也能自动锁定。</div>
 <div class="n"><span class="i"></span>可选坐姿提醒：弯腰低头、离屏幕太近时提醒你。</div></div>
