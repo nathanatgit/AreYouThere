@@ -27,9 +27,9 @@ param(
     [switch] $Bundle,
     [string] $OutDir = (Join-Path $PSScriptRoot '..\out'),
     # MSIX 身份。上架 Microsoft Store 时三者必须与 Partner Center“产品标识”页面上的值完全一致
-    [string] $Publisher = 'CN=HGY',
-    [string] $IdentityName = 'AreYouThere',
-    [string] $PublisherDisplayName = 'HGY',
+    [string] $Publisher = 'CN=65060FB2-9417-4C15-9ABF-D5188EB4DF3A',
+    [string] $IdentityName = 'NathanHan.AreYouThere',
+    [string] $PublisherDisplayName = 'NathanHan',
     [string] $CertPath,
     [string] $CertPassword,
     [string] $Wix = 'wix'

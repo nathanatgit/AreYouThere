@@ -83,9 +83,9 @@ jobs:
         shell: pwsh
         env:
           CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
-          PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=HGY' }}
-          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'AreYouThere' }}
-          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'HGY' }}
+          PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=65060FB2-9417-4C15-9ABF-D5188EB4DF3A' }}
+          IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME || 'NathanHan.AreYouThere' }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME || 'NathanHan' }}
         run: |
           $params = @{
             Version              = '${{ steps.version.outputs.value }}'
