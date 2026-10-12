@@ -81,12 +81,12 @@ internal sealed class PresenceService : IDisposable
         try
         {
             var group = await MediaFrameSourceGroup.FromIdAsync(cameraId);
-            if (group is null) return Fail(cts, "所选摄像头当前不可用，请刷新摄像头列表后重新选择。");
+            if (group is null) return Fail(cts, L.T("所选摄像头当前不可用，请刷新摄像头列表后重新选择。", "The selected camera isn't available. Refresh the camera list and select it again."));
             _capture = await OpenAsync(group);
             _capture.Failed += Capture_Failed;
             _detector = await FaceDetector.CreateAsync();
             var source = _capture.FrameSources.Values.FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color)
-                ?? throw new InvalidOperationException("这个摄像头没有彩色画面");
+                ?? throw new InvalidOperationException(L.T("这个摄像头没有彩色画面", "This camera does not provide a color video stream"));
             _reader = await _capture.CreateFrameReaderAsync(source, MediaEncodingSubtypes.Bgra8);
             _reader.FrameArrived += Reader_FrameArrived;
             await StartStreamAsync();
@@ -97,15 +97,15 @@ internal sealed class PresenceService : IDisposable
         }
         catch (UnauthorizedAccessException)
         {
-            return Fail(cts, "没有摄像头权限。请在 Windows 设置 › 隐私和安全性 › 摄像头 中，开启“摄像头访问”和“允许桌面应用访问你的摄像头”。", permission: true);
+            return Fail(cts, L.T("没有摄像头权限。请在 Windows 设置 › 隐私和安全性 › 摄像头 中，开启“摄像头访问”和“允许桌面应用访问你的摄像头”。", "Camera access was denied. Open the camera privacy settings in Windows and enable camera access for desktop apps."), permission: true);
         }
         catch (CameraInUseException)
         {
-            return Fail(cts, "摄像头可能正被其他程序独占使用");
+            return Fail(cts, L.T("摄像头可能正被其他程序独占使用", "Another app may be using the camera and preventing access"));
         }
         catch (Exception ex)
         {
-            return Fail(cts, $"无法打开摄像头：{ex.Message}");
+            return Fail(cts, L.T($"无法打开摄像头：{ex.Message}", $"Can't open the camera: {ex.Message}"));
         }
     }
 
@@ -177,7 +177,7 @@ internal sealed class PresenceService : IDisposable
         Interlocked.Exchange(ref _framesSinceStart, 0);
         var status = await _reader.StartAsync();
         if (status != MediaFrameReaderStartStatus.Success)
-            throw new InvalidOperationException($"摄像头无法开始传输画面（{status}）");
+            throw new InvalidOperationException(L.T($"摄像头无法开始传输画面（{status}）", $"The camera couldn't start streaming ({status})"));
         _streaming = true;
         _streamStartedAt = DateTimeOffset.UtcNow;
         ReportStatus(null);
@@ -217,7 +217,7 @@ internal sealed class PresenceService : IDisposable
 
     private void Capture_Failed(MediaCapture sender, MediaCaptureFailedEventArgs args)
     {
-        CameraFailed?.Invoke(this, $"摄像头出现错误，已停止检测（{args.Message}）。可能是摄像头被拔出或被其他程序占用。");
+        CameraFailed?.Invoke(this, L.T($"摄像头出现错误，已停止检测（{args.Message}）。可能是摄像头被拔出或被其他程序占用。", $"Detection stopped because of a camera error ({args.Message}). The camera may have been unplugged or may be in use by another app."));
     }
 
     private async Task LoopAsync(Action<string> report, CancellationToken token)
@@ -234,7 +234,7 @@ internal sealed class PresenceService : IDisposable
                     {
                         if (token.IsCancellationRequested) return;
                         KeepAwake(false);
-                        CameraFailed?.Invoke(this, $"无法重新打开摄像头，已停止检测（{ex.Message}）。");
+                        CameraFailed?.Invoke(this, L.T($"无法重新打开摄像头，已停止检测（{ex.Message}）。", $"Couldn't reopen the camera; detection stopped ({ex.Message})."));
                         return;
                     }
                 }
@@ -248,8 +248,9 @@ internal sealed class PresenceService : IDisposable
                         {
                             if (token.IsCancellationRequested) return;
                             var close = faces.Count(f => f.Close);
-                            ReportStatus(close > 0 ? $"已检测到人脸（{DescribeFaces(faces)}）"
-                                : faces.Count > 0 ? $"人脸太小，视为不在（{DescribeFaces(faces)}）" : "未检测到人脸");
+                            ReportStatus(close > 0 ? L.T($"已检测到人脸（{DescribeFaces(faces)}）", $"Face detected ({DescribeFaces(faces)})")
+                                : faces.Count > 0 ? L.T($"人脸太小，视为不在（{DescribeFaces(faces)}）", $"No face meets the minimum size; treated as absent ({DescribeFaces(faces)})")
+                                : L.T("未检测到人脸", "No face detected"));
                             if (close >= 2 && !_multipleFacesWarned) MultipleFacesDetected?.Invoke(this, close);
                             _multipleFacesWarned = close >= 2;
                             _nextDetection = HandleResult(close > 0, report);
@@ -257,14 +258,14 @@ internal sealed class PresenceService : IDisposable
                         else if (now - _streamStartedAt > NoFrameTimeout)
                         {
                             KeepAwake(false);
-                            CameraFailed?.Invoke(this, "摄像头长时间没有画面，已停止检测。可能是摄像头被拔出、被遮挡开关关闭，或被其他程序占用。");
+                            CameraFailed?.Invoke(this, L.T("摄像头长时间没有画面，已停止检测。可能是摄像头被拔出、被遮挡开关关闭，或被其他程序占用。", "Detection stopped because the camera stopped sending images. It may have been unplugged, disabled by a privacy switch, or opened by another app."));
                             return;
                         }
                     }
                     catch
                     {
                         _nextDetection = DateTimeOffset.UtcNow.AddSeconds(_intervalSeconds);
-                        report("状态：本次摄像头检测失败，将在下个周期重试");
+                        report(L.T("本次摄像头检测失败，将在下个周期重试", "Camera check failed; will retry at the next scheduled check"));
                     }
                 }
                 else if (_streaming && _previewWanted && now - _lastOverlay >= OverlayInterval)
@@ -292,14 +293,14 @@ internal sealed class PresenceService : IDisposable
         {
             _awaySince = null;
             KeepAwake(true);
-            report("状态：检测到你在电脑前，已保持唤醒");
+            report(L.T("检测到你在电脑前，已保持唤醒", "Qualifying face detected; keeping the screen on"));
             return now + interval;
         }
         if (!LockWhenAway)
         {
             _awaySince = null;
             KeepAwake(false);
-            report("状态：未检测到人脸，已交还系统电源策略");
+            report(L.T("未检测到人脸，已交还系统电源策略", "No qualifying face detected; following Windows power settings"));
             return now + interval;
         }
 
@@ -315,18 +316,21 @@ internal sealed class PresenceService : IDisposable
         {
             _awaySince = null;
             KeepAwake(false);
-            report("状态：未检测到人脸，已锁定电脑");
+            report(L.T("未检测到人脸，已锁定电脑", "No qualifying face detected; locking the PC"));
             LockWorkStation();
             return now + interval;
         }
         KeepAwake(true);
-        report($"状态：未检测到人脸，{PowerPolicy.Describe(TimeSpan.FromSeconds(Math.Ceiling((deadline - now).TotalSeconds)))}后锁定");
+        var remaining = PowerPolicy.Describe(TimeSpan.FromSeconds(Math.Ceiling((deadline - now).TotalSeconds)));
+        report(L.T($"未检测到人脸，{remaining}后锁定", $"No qualifying face detected; locking in {remaining}"));
         var next = now + CountdownRecheck;
         return next < deadline ? next : deadline;
     }
 
     private static string DescribeFaces(IReadOnlyList<DetectedFace> faces) =>
-        faces.Count == 1 ? $"面积 {faces[0].AreaPercent:0.0}%" : $"{faces.Count} 张，最大 {faces.Max(f => f.AreaPercent):0.0}%";
+        faces.Count == 1
+            ? L.T($"面积 {faces[0].AreaPercent:0.0}%", $"{faces[0].AreaPercent:0.0}% of image area")
+            : L.T($"{faces.Count} 张，最大 {faces.Max(f => f.AreaPercent):0.0}%", $"{faces.Count} faces; largest covers {faces.Max(f => f.AreaPercent):0.0}% of image area");
 
     /// <summary>检测最新一帧中的人脸并更新预览框；没有可用画面时返回 null。</summary>
     private async Task<IReadOnlyList<DetectedFace>?> DetectLatestFrameAsync()
@@ -362,12 +366,19 @@ internal sealed class PresenceService : IDisposable
 
     private string? _lastFaceMessage;
 
+    /// <summary>切换界面语言后重新报告状态；上次的人脸结果是旧语言，清掉等下次检测。</summary>
+    public void RefreshLanguage()
+    {
+        _lastFaceMessage = null;
+        if (_capture is not null) ReportStatus(null);
+    }
+
     private void ReportStatus(string? faceMessage)
     {
         if (faceMessage is not null) _lastFaceMessage = faceMessage;
-        var camera = !_streaming ? "待机（两次检测之间关闭以省电）"
-            : _previewWanted ? "工作中，预览中" : "工作中（检测完成后关闭）";
-        StatusChanged?.Invoke(this, new(camera, _lastFaceMessage ?? "等待检测"));
+        var camera = !_streaming ? L.T("待机（两次检测之间关闭以省电）", "Standby (off between checks to save power)")
+            : _previewWanted ? L.T("工作中，预览中", "On (preview active)") : L.T("工作中（检测完成后关闭）", "On (turns off after the check)");
+        StatusChanged?.Invoke(this, new(camera, _lastFaceMessage ?? L.T("等待检测", "Waiting for a check")));
     }
 
     // SetThreadExecutionState 作用于调用线程；LoopAsync 由 UI 线程启动，续体也回到 UI 线程，
@@ -389,7 +400,7 @@ internal sealed class PresenceService : IDisposable
         _lastFaceMessage = null;
         _awaySince = null;
         _multipleFacesWarned = false;
-        StatusChanged?.Invoke(this, new("已关闭", "未检测"));
+        StatusChanged?.Invoke(this, new(L.T("已关闭", "Off"), L.T("未检测", "Not checking")));
         KeepAwake(false);
     }
 

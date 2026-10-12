@@ -3,7 +3,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d" Title="在吗 AreYouThere">
+    mc:Ignorable="d">
+  <!-- 界面文字都在 MainWindow.xaml.cs 的 Localize() 里按当前语言设置 -->
   <!-- 启动时把键盘焦点放在滚动区域，避免焦点落在摄像头开关上被误按空格开启 -->
   <ScrollViewer x:Name="RootScroll" IsTabStop="True">
     <!-- 宽窗口：设置在左、小预览在右；窄窗口：单列，预览在下方。切换逻辑见 LayoutRoot_SizeChanged -->
@@ -23,77 +24,78 @@
         <StackPanel Orientation="Horizontal" Spacing="14">
           <Image Source="ms-appx:///Assets/logo.png" Width="48" Height="48" />
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="在吗" FontSize="30" FontWeight="SemiBold" />
-            <TextBlock Text="AreYouThere" Opacity="0.6" />
+            <TextBlock x:Name="AppTitleText" FontSize="30" FontWeight="SemiBold" />
+            <TextBlock x:Name="AppSubtitleText" Text="AreYouThere" Opacity="0.6" />
           </StackPanel>
         </StackPanel>
-        <TextBlock Opacity="0.75" TextWrapping="Wrap"
-          Text="微软官方的「存在感知」(Presence Sensing) 只在部分新款设备上提供。「在吗」是它的轻量替代方案：用普通摄像头判断你是否在电脑前，在的时候暂时阻止 Windows 自动息屏。" />
-        <InfoBar IsOpen="True" Severity="Success" IsClosable="False" Title="完全离线，只在本机处理"
-          Message="「在吗」没有任何联网功能：不上传、不收集、不保存任何画面或检测数据。摄像头画面只在本机内存中分析，分析完立即丢弃；偏好设置仅保存在本机。" />
+        <TextBlock x:Name="IntroText" Opacity="0.75" TextWrapping="Wrap" />
+        <InfoBar x:Name="OfflineBar" IsOpen="True" Severity="Success" IsClosable="False" />
       </StackPanel>
 
       <StackPanel x:Name="SettingsPanel" Grid.Row="1" Spacing="18">
-        <InfoBar IsOpen="True" Severity="Warning" IsClosable="False"
-          Message="隐私提醒：启用后摄像头指示灯会亮起（显示预览时常亮，后台运行时每次检测短暂亮起）。请勿在隐私敏感场所使用，以免引起误会或纠纷。在公共场所使用时，请遵守场所规定，并调大人脸面积阈值，避免路人入镜被当成你，导致离开后不自动锁屏。" />
-        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" Title="可能存在冲突" />
+        <InfoBar x:Name="PrivacyBar" IsOpen="True" Severity="Warning" IsClosable="False" />
+        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" />
         <InfoBar x:Name="CameraProblem" IsOpen="False" Visibility="Collapsed" Severity="Error" IsClosable="False">
           <InfoBar.ActionButton>
-            <Button x:Name="CameraPrivacyButton" Content="打开摄像头隐私设置" Click="CameraPrivacyButton_Click" />
+            <Button x:Name="CameraPrivacyButton" Click="CameraPrivacyButton_Click" />
           </InfoBar.ActionButton>
         </InfoBar>
         <StackPanel Spacing="8">
-          <TextBlock Text="摄像头" />
+          <TextBlock x:Name="CameraLabel" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <ComboBox x:Name="CameraBox" MinWidth="300" MaxWidth="420" PlaceholderText="正在查找摄像头…"
+            <ComboBox x:Name="CameraBox" MinWidth="300" MaxWidth="420"
                       SelectionChanged="CameraBox_SelectionChanged" />
-            <Button Content="刷新" Click="RefreshCameras_Click" />
+            <Button x:Name="RefreshCamerasButton" Click="RefreshCameras_Click" />
           </StackPanel>
-          <TextBlock Text="有些电脑上摄像头名称显示不准确。不确定是哪一个时，可以开启检测并查看右侧预览来确认。"
-                     Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+          <TextBlock x:Name="CameraHintText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
-        <ToggleSwitch x:Name="EnabledSwitch" Header="启用在场检测" Toggled="EnabledSwitch_Toggled" />
-        <ToggleSwitch x:Name="StartupSwitch" Header="开机自启动（登录 Windows 后）" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
-        <TextBlock x:Name="StartupStatusText" Text="默认关闭。启用前需确认隐私提醒；每次随开机启动都需点击“确定”，之后才开启检测并驻留托盘。" Opacity="0.65" TextWrapping="Wrap" />
-        <Button x:Name="RestoreStartupReminderButton" Content="恢复每次开机运行提醒" IsEnabled="False" Click="RestoreStartupReminder_Click" />
-        <ToggleSwitch x:Name="PreviewSwitch" Header="显示摄像头预览" IsOn="True" Toggled="PreviewSwitch_Toggled" />
+        <ToggleSwitch x:Name="EnabledSwitch" Toggled="EnabledSwitch_Toggled" />
+        <ToggleSwitch x:Name="StartupSwitch" IsEnabled="False" Toggled="StartupSwitch_Toggled" />
+        <TextBlock x:Name="StartupStatusText" Opacity="0.65" TextWrapping="Wrap" />
+        <Button x:Name="RestoreStartupReminderButton" IsEnabled="False" Click="RestoreStartupReminder_Click" />
+        <ToggleSwitch x:Name="PreviewSwitch" IsOn="True" Toggled="PreviewSwitch_Toggled" />
         <StackPanel Spacing="8">
-          <TextBlock Text="检测间隔" />
+          <TextBlock x:Name="IntervalLabel" />
           <ComboBox x:Name="IntervalBox" SelectedIndex="2" SelectionChanged="IntervalBox_SelectionChanged" Width="220">
-            <ComboBoxItem Content="15 秒" Tag="15" />
-            <ComboBoxItem Content="30 秒" Tag="30" />
-            <ComboBoxItem Content="1 分钟（默认）" Tag="60" />
-            <ComboBoxItem Content="2 分钟" Tag="120" />
-            <ComboBoxItem Content="5 分钟" Tag="300" />
+            <ComboBoxItem Tag="15" />
+            <ComboBoxItem Tag="30" />
+            <ComboBoxItem Tag="60" />
+            <ComboBoxItem Tag="120" />
+            <ComboBoxItem Tag="300" />
           </ComboBox>
         </StackPanel>
         <StackPanel Spacing="8">
-          <RadioButtons x:Name="AwayModeButtons" Header="离开电脑后" SelectedIndex="0"
+          <RadioButtons x:Name="AwayModeButtons" SelectedIndex="0"
                         SelectionChanged="AwayModeButtons_SelectionChanged">
-            <x:String>跟随系统电源策略</x:String>
-            <x:String>由「在吗」接管：检测到离开后锁定电脑</x:String>
+            <RadioButton x:Name="AwayFollowOption" />
+            <RadioButton x:Name="AwayLockOption" />
           </RadioButtons>
-          <ComboBox x:Name="LockDelayBox" Header="锁定时机" Width="260" SelectedIndex="2" Visibility="Collapsed"
+          <ComboBox x:Name="LockDelayBox" Width="260" SelectedIndex="2" Visibility="Collapsed"
                     SelectionChanged="LockDelayBox_SelectionChanged">
-            <ComboBoxItem Content="立即锁定" Tag="0" />
-            <ComboBoxItem Content="延迟 15 秒后锁定" Tag="15" />
-            <ComboBoxItem Content="延迟 30 秒后锁定" Tag="30" />
-            <ComboBoxItem Content="延迟 1 分钟后锁定" Tag="60" />
-            <ComboBoxItem Content="延迟 2 分钟后锁定" Tag="120" />
-            <ComboBoxItem Content="延迟一个检测间隔后锁定" Tag="-1" />
+            <ComboBoxItem Tag="0" />
+            <ComboBoxItem Tag="15" />
+            <ComboBoxItem Tag="30" />
+            <ComboBoxItem Tag="60" />
+            <ComboBoxItem Tag="120" />
+            <ComboBoxItem Tag="-1" />
           </ComboBox>
           <TextBlock x:Name="PolicyText" Opacity="0.75" TextWrapping="Wrap" />
         </StackPanel>
-        <TextBlock x:Name="StatusText" Text="状态：未启用" Opacity="0.75" TextWrapping="Wrap" />
-        <TextBlock Text="关闭此窗口后程序会继续在右下角托盘运行。单击托盘图标打开窗口，右键可启用/关闭或退出。" TextWrapping="Wrap" Opacity="0.65" />
+        <TextBlock x:Name="StatusText" Opacity="0.75" TextWrapping="Wrap" />
+        <TextBlock x:Name="TrayHintText" TextWrapping="Wrap" Opacity="0.65" />
         <TextBlock x:Name="PowerSummaryText" TextWrapping="Wrap" Opacity="0.75" />
+        <!-- 语言名称用各自的语言写，看不懂当前语言的人也能找到 -->
+        <ComboBox x:Name="LanguageBox" Width="220" SelectionChanged="LanguageBox_SelectionChanged">
+          <ComboBoxItem Tag="system" />
+          <ComboBoxItem Content="简体中文" Tag="zh" />
+          <ComboBoxItem Content="English" Tag="en" />
+        </ComboBox>
         <StackPanel Spacing="4" Margin="0,8,0,0">
-          <TextBlock Text="关于" FontWeight="SemiBold" />
+          <TextBlock x:Name="AboutHeader" FontWeight="SemiBold" />
           <TextBlock x:Name="AboutText" Opacity="0.75" TextWrapping="Wrap" />
           <!-- 链接只是交给系统浏览器打开，程序本身仍然不联网 -->
-          <HyperlinkButton Padding="0" NavigateUri="https://github.com/nathanatgit/AreYouThere"
-                           ToolTipService.ToolTip="在浏览器中打开">
-            <TextBlock Text="github.com/nathanatgit/AreYouThere（在浏览器中打开）" TextWrapping="Wrap" />
+          <HyperlinkButton x:Name="RepoLink" Padding="0" NavigateUri="https://github.com/nathanatgit/AreYouThere">
+            <TextBlock x:Name="RepoLinkText" TextWrapping="Wrap" />
           </HyperlinkButton>
         </StackPanel>
       </StackPanel>
@@ -101,9 +103,9 @@
       <Border x:Name="PreviewCard" Grid.Row="1" Grid.Column="1" Width="320" VerticalAlignment="Top"
               Background="#14000000" CornerRadius="8" Padding="12">
         <StackPanel Spacing="8">
-          <TextBlock Text="摄像头预览" FontSize="16" FontWeight="SemiBold" />
+          <TextBlock x:Name="PreviewTitle" FontSize="16" FontWeight="SemiBold" />
           <Grid x:Name="PreviewArea" Height="180" Background="#22000000" CornerRadius="6">
-            <TextBlock x:Name="PreviewPlaceholder" Text="预览未开启" Opacity="0.5"
+            <TextBlock x:Name="PreviewPlaceholder" Opacity="0.5"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
             <!-- Viewbox 等比缩放：内部按摄像头原始像素布局，人脸框坐标无需换算 -->
             <Viewbox>
@@ -114,14 +116,13 @@
               </Grid>
             </Viewbox>
           </Grid>
-          <TextBlock x:Name="CameraStatusText" Text="摄像头状态：尚未打开" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock x:Name="FaceStatusText" Text="人脸状态：等待检测" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock Text="预览仅用于本地调整位置，不保存或上传图像。" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
-          <Slider x:Name="FaceAreaSlider" Header="人脸最小面积（占画面）" Minimum="0" Maximum="50" StepFrequency="0.5"
+          <TextBlock x:Name="CameraStatusText" Opacity="0.75" TextWrapping="Wrap" />
+          <TextBlock x:Name="FaceStatusText" Opacity="0.75" TextWrapping="Wrap" />
+          <TextBlock x:Name="PreviewNoteText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
+          <Slider x:Name="FaceAreaSlider" Minimum="0" Maximum="50" StepFrequency="0.5"
                   TickFrequency="5" TickPlacement="Outside" ValueChanged="FaceAreaSlider_ValueChanged" />
           <TextBlock x:Name="FaceAreaText" Opacity="0.75" TextWrapping="Wrap" />
-          <TextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap"
-            Text="只有面积不小于此阈值的人脸（绿框）才算你在电脑前；远处的人、路过的人或墙上的照片通常较小（灰框），会被忽略。请先调整摄像头，坐在平时的位置查看绿框上的百分比，把阈值设为略低于它（例如显示 8% 时设为 4–5%）。阈值太小时，在公共场所可能把附近的其他人当成你，你离开后电脑不会锁定；太大时你稍微坐远就会被当成离开。" />
+          <TextBlock x:Name="FaceAreaHintText" Opacity="0.6" FontSize="12" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
     </Grid>

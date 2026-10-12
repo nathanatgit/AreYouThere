@@ -27,7 +27,7 @@ internal sealed class TrayService : IDisposable
     private readonly WndProc _newProc;
     private readonly Func<bool> _isEnabled;
     private readonly Action _toggle, _open, _exit;
-    private string _tip = "「在吗」正在运行";
+    private string _tip = L.T("『在吗』正在运行", "AreYouThere is running");
     private bool _disposed;
     private const uint WM_WTSSESSION_CHANGE = 0x02B1, WTS_SESSION_LOCK = 0x7, WTS_SESSION_UNLOCK = 0x8;
 
@@ -99,10 +99,10 @@ internal sealed class TrayService : IDisposable
     private void ShowMenu()
     {
         var menu = CreatePopupMenu();
-        AppendMenu(menu, MF_STRING | (_isEnabled() ? MF_CHECKED : 0), 1, "启用「在吗」");
-        AppendMenu(menu, MF_STRING, 2, "打开设置窗口");
+        AppendMenu(menu, MF_STRING | (_isEnabled() ? MF_CHECKED : 0), 1, L.T("启用『在吗』", "Enable presence detection"));
+        AppendMenu(menu, MF_STRING, 2, L.T("打开设置窗口", "Open settings"));
         AppendMenu(menu, MF_SEPARATOR, 0, null);
-        AppendMenu(menu, MF_STRING, 3, "退出");
+        AppendMenu(menu, MF_STRING, 3, L.T("退出", "Exit"));
         GetCursorPos(out var point);
         SetForegroundWindow(_hwnd);
         var command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.X, point.Y, 0, _hwnd, IntPtr.Zero);

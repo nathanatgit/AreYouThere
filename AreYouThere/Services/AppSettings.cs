@@ -16,6 +16,8 @@ internal sealed class AppSettings
     public double MinFaceAreaPercent { get; set; } = 3;
     public bool StartupConsent { get; set; }
     public bool SkipStartupReminder { get; set; }
+    /// <summary>界面语言："zh" / "en"；null 表示跟随 Windows 显示语言。</summary>
+    public string? Language { get; set; }
     /// <summary>离开后多少秒锁定；-1 表示延迟一个检测间隔。</summary>
     public int LockDelaySeconds { get; set; } = 30;
 

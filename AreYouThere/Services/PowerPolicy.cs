@@ -45,15 +45,28 @@ internal sealed record PowerPolicy(bool OnBattery, uint DisplayOffSeconds, uint 
         return result == 0 ? value : 0;
     }
 
-    public static string Describe(TimeSpan span) => span.TotalSeconds switch
-    {
-        <= 0 => "立即",
-        < 60 => $"{span.TotalSeconds:0} 秒",
-        < 3600 => span.Seconds == 0 ? $"{span.TotalMinutes:0} 分钟" : $"{span.Minutes} 分 {span.Seconds} 秒",
-        _ => span.Minutes == 0 ? $"{span.TotalHours:0} 小时" : $"{span.Hours} 小时 {span.Minutes} 分钟",
-    };
+    /// <summary>时长文字。中文直接嵌在句中（“每 1 分钟检测一次”），英文同理（“every 1 minute”）。</summary>
+    public static string Describe(TimeSpan span) => L.Zh
+        ? span.TotalSeconds switch
+        {
+            <= 0 => "立即",
+            < 60 => $"{span.TotalSeconds:0} 秒",
+            < 3600 => span.Seconds == 0 ? $"{span.TotalMinutes:0} 分钟" : $"{span.Minutes} 分 {span.Seconds} 秒",
+            _ => span.Minutes == 0 ? $"{span.TotalHours:0} 小时" : $"{span.Hours} 小时 {span.Minutes} 分钟",
+        }
+        : span.TotalSeconds switch
+        {
+            <= 0 => "immediately",
+            < 60 => Plural(span.TotalSeconds, "second"),
+            < 3600 => span.Seconds == 0 ? Plural(span.TotalMinutes, "minute") : $"{span.Minutes} min {span.Seconds} s",
+            _ => span.Minutes == 0 ? Plural(span.TotalHours, "hour") : $"{span.Hours} h {span.Minutes} min",
+        };
 
-    public static string DescribeTimeout(uint seconds) => seconds == 0 ? "从不" : Describe(TimeSpan.FromSeconds(seconds)) + "后";
+    private static string Plural(double value, string unit) => $"{value:0} {unit}{(Math.Round(value) == 1 ? "" : "s")}";
+
+    public static string DescribeTimeout(uint seconds) => seconds == 0
+        ? L.T("从不", "never")
+        : L.T(Describe(TimeSpan.FromSeconds(seconds)) + "后", "after " + Describe(TimeSpan.FromSeconds(seconds)));
 
     private const uint SPI_GETSCREENSAVETIMEOUT = 0x000E, SPI_GETSCREENSAVEACTIVE = 0x0010, SPI_GETSCREENSAVESECURE = 0x0076;
     [StructLayout(LayoutKind.Sequential)] private struct SYSTEM_POWER_STATUS
@@ -95,15 +108,23 @@ internal static class PowerToysAwake
         }
         catch
         {
-            return "检测到 PowerToys Awake 正在运行。如果它处于保持唤醒状态，可能与「在吗」冲突。";
+            return L.T("检测到 PowerToys Awake 正在运行。如果它处于保持唤醒状态，可能与『在吗』冲突。",
+                "PowerToys Awake is running. If it is keeping the PC awake, it may conflict with AreYouThere.");
         }
 
         // Awake 模式：0 被动（使用电源计划）、1 无限期、2 定时、3 保持到指定时间
-        var modeText = mode switch { 1 => "无限期保持唤醒", 2 => "定时保持唤醒", 3 => "保持唤醒到指定时间", _ => null };
+        var modeText = mode switch
+        {
+            1 => L.T("无限期保持唤醒", "Keep awake indefinitely"),
+            2 => L.T("定时保持唤醒", "Keep awake for a time interval"),
+            3 => L.T("保持唤醒到指定时间", "Keep awake until expiration"),
+            _ => null
+        };
         if (modeText is null) return null;
         var effect = keepDisplayOn
-            ? "屏幕会一直保持常亮，你离开后也不会息屏。"
-            : "电脑不会进入睡眠，依赖睡眠的自动锁屏可能不会发生。";
-        return $"PowerToys Awake 当前为「{modeText}」模式：{effect}这可能与「在吗」冲突，建议在 PowerToys 中把 Awake 改回使用电源计划（被动）模式。";
+            ? L.T("屏幕会一直保持常亮，你离开后也不会息屏。", "The screen stays on and won't turn off after you leave. ")
+            : L.T("电脑不会进入睡眠，依赖睡眠的自动锁屏可能不会发生。", "The PC won't go to sleep, so it may not lock automatically if locking depends on sleep. ");
+        return L.T($"PowerToys Awake 当前为“{modeText}”模式：{effect}这可能与『在吗』冲突，建议在 PowerToys 中把 Awake 改回使用电源计划（被动）模式。",
+            $"PowerToys Awake is set to \"{modeText}\". {effect}This may conflict with AreYouThere. In PowerToys, set Awake back to \"Keep using the selected power plan\" (passive).");
     }
 }

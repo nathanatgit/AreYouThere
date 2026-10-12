@@ -35,14 +35,14 @@ internal sealed class CameraCatalog : IDisposable
             // 只保留有彩色画面的摄像头；Windows Hello 的红外摄像头不能用于人脸检测
             var color = group.SourceInfos.FirstOrDefault(s => s.SourceKind == MediaFrameSourceKind.Color);
             if (color is null) continue;
-            var name = string.IsNullOrWhiteSpace(group.DisplayName) ? "未命名摄像头" : group.DisplayName.Trim();
+            var name = string.IsNullOrWhiteSpace(group.DisplayName) ? L.T("未命名摄像头", "Unnamed camera") : group.DisplayName.Trim();
             var panel = color.DeviceInformation?.EnclosureLocation?.Panel switch
             {
-                Windows.Devices.Enumeration.Panel.Front => "（前置）",
-                Windows.Devices.Enumeration.Panel.Back => "（后置）",
+                Windows.Devices.Enumeration.Panel.Front => L.T("（前置）", " (front)"),
+                Windows.Devices.Enumeration.Panel.Back => L.T("（后置）", " (rear)"),
                 _ => ""
             };
-            cameras.Add(new CameraInfo(group.Id, $"摄像头 {cameras.Count + 1}：{name}{panel}"));
+            cameras.Add(new CameraInfo(group.Id, L.T($"摄像头 {cameras.Count + 1}：{name}{panel}", $"Camera {cameras.Count + 1}: {name}{panel}")));
         }
         return cameras;
     }
