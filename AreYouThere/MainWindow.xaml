@@ -106,7 +106,14 @@
               <TextBlock x:Name="TrayHintText" TextWrapping="Wrap" />
             </StackPanel>
           </toolkit:SettingsCard.Description>
-          <ToggleSwitch x:Name="EnabledSwitch" Toggled="EnabledSwitch_Toggled" />
+          <!-- 检测开启时可暂停一段时间（菜单项在代码里按 TrayService.PauseChoices 生成）；暂停中换成“恢复” -->
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <DropDownButton x:Name="PauseButton" Visibility="Collapsed" VerticalAlignment="Center">
+              <DropDownButton.Flyout><MenuFlyout x:Name="PauseMenu" Placement="Bottom" /></DropDownButton.Flyout>
+            </DropDownButton>
+            <Button x:Name="ResumeButton" Visibility="Collapsed" VerticalAlignment="Center" Click="ResumeButton_Click" />
+            <ToggleSwitch x:Name="EnabledSwitch" Toggled="EnabledSwitch_Toggled" />
+          </StackPanel>
         </toolkit:SettingsCard>
 
         <TextBlock x:Name="DetectionHeader" Style="{StaticResource SectionHeader}" />
@@ -211,6 +218,36 @@
             <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16" Visibility="Collapsed">
               <toolkit:SettingsCard.Description><TextBlock x:Name="LockDelayHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
               <local:DurationPicker x:Name="LockDelayPicker" ShowHours="False" />
+            </toolkit:SettingsCard>
+            <!-- 倒计时期间调暗屏幕：只在锁定模式且延迟大于 0 时有意义 -->
+            <toolkit:SettingsCard x:Name="DimCard" FontSize="16" Visibility="Collapsed">
+              <toolkit:SettingsCard.Description><TextBlock x:Name="DimHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
+              <ToggleSwitch x:Name="DimSwitch" Toggled="DimSwitch_Toggled" />
+            </toolkit:SettingsCard>
+            <!-- 调暗方式：黑色遮罩（100% 为全黑，临时保护隐私）或降低显示器亮度；说明只显示在选中的选项下面 -->
+            <toolkit:SettingsCard x:Name="DimModeCard" FontSize="16" Visibility="Collapsed" ContentAlignment="Left">
+              <StackPanel Spacing="4">
+                <RadioButton x:Name="DimOverlayOption" GroupName="DimMode" Checked="DimMode_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="DimOverlayText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="DimOverlayNote" Style="{StaticResource Hint}" />
+                  </StackPanel>
+                </RadioButton>
+                <RadioButton x:Name="DimBrightnessOption" GroupName="DimMode" Checked="DimMode_Checked">
+                  <StackPanel Spacing="2">
+                    <TextBlock x:Name="DimBrightnessText" TextWrapping="Wrap" />
+                    <TextBlock x:Name="DimBrightnessNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
+                  </StackPanel>
+                </RadioButton>
+              </StackPanel>
+            </toolkit:SettingsCard>
+            <!-- 压暗强度：按住滑块拖动时预览，松开即恢复 -->
+            <toolkit:SettingsCard x:Name="DimLevelCard" FontSize="16" Visibility="Collapsed">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Slider x:Name="DimLevelSlider" Width="180" Minimum="20" Maximum="100" StepFrequency="5" VerticalAlignment="Center"
+                        ValueChanged="DimLevelSlider_ValueChanged" />
+                <TextBlock x:Name="DimLevelText" MinWidth="40" VerticalAlignment="Center" />
+              </StackPanel>
             </toolkit:SettingsCard>
           </toolkit:SettingsExpander.Items>
         </toolkit:SettingsExpander>

@@ -106,6 +106,8 @@ internal sealed class PresenceService : IDisposable
     public event EventHandler<PresenceFrame>? FrameReady;
     /// <summary>开始锁定倒计时（延迟大于 0 时）时触发，参数为倒计时长度。</summary>
     public event EventHandler<TimeSpan>? LockCountdownStarted;
+    /// <summary>锁定倒计时结束时触发：参数 true 表示已锁定电脑，false 表示倒计时被取消（人回来了、有键鼠操作或检测停止）。</summary>
+    public event EventHandler<bool>? LockCountdownEnded;
     /// <summary>运行中摄像头出错（被拔出、被占用、长时间无画面），参数为给用户的说明。检测已停止。</summary>
     public event EventHandler<string>? CameraFailed;
     /// <summary>检测时发现多张达到阈值的人脸，参数为张数。同一段多人期间只触发一次。</summary>
@@ -115,6 +117,7 @@ internal sealed class PresenceService : IDisposable
     private uint _intervalSeconds = 60;
     private DateTimeOffset _nextDetection;
     private DateTimeOffset? _awaySince;
+    private bool _countdownActive;
     private MediaCapture? _capture;
     private FaceDetector? _detector;
     private MediaFrameReader? _reader;
@@ -390,7 +393,7 @@ internal sealed class PresenceService : IDisposable
         _nextDetection = now - idle + interval;
         if (_usingInput && _awaySince is null) return;
         _usingInput = true;
-        _awaySince = null;
+        CancelAway();
         KeepAwake(true);
         var described = PowerPolicy.Describe(interval);
         // 只说“暂停在场检测”：预览打开或单独的坐姿检测仍会用摄像头
@@ -471,7 +474,7 @@ internal sealed class PresenceService : IDisposable
         var interval = TimeSpan.FromSeconds(_intervalSeconds);
         if (faceSeen)
         {
-            _awaySince = null;
+            CancelAway();
             KeepAwake(true);
             if (!SmartDetection || IntervalStepSeconds == 0)
             {
@@ -486,7 +489,7 @@ internal sealed class PresenceService : IDisposable
         _presentChecks = 0;
         if (!LockWhenAway)
         {
-            _awaySince = null;
+            CancelAway();
             KeepAwake(false);
             report(L.T("未检测到人脸，已交还系统电源策略", "No qualifying face detected; following Windows power settings"));
             return now + interval;
@@ -497,7 +500,11 @@ internal sealed class PresenceService : IDisposable
         if (_awaySince is null)
         {
             _awaySince = now;
-            if (delay > TimeSpan.Zero) LockCountdownStarted?.Invoke(this, delay);
+            if (delay > TimeSpan.Zero)
+            {
+                _countdownActive = true;
+                LockCountdownStarted?.Invoke(this, delay);
+            }
         }
         var deadline = _awaySince.Value + delay;
         if (now >= deadline)
@@ -506,6 +513,11 @@ internal sealed class PresenceService : IDisposable
             KeepAwake(false);
             report(L.T("未检测到人脸，已锁定电脑", "No qualifying face detected; locking the PC"));
             LockWorkStation();
+            if (_countdownActive)
+            {
+                _countdownActive = false;
+                LockCountdownEnded?.Invoke(this, true);
+            }
             return now + interval;
         }
         KeepAwake(true);
@@ -513,6 +525,15 @@ internal sealed class PresenceService : IDisposable
         report(L.T($"未检测到人脸，{remaining}后锁定", $"No qualifying face detected; locking in {remaining}"));
         var next = now + CountdownRecheck;
         return next < deadline ? next : deadline;
+    }
+
+    /// <summary>人回来了（或不再由本程序锁定、检测停止）：取消离开计时，正在倒计时则通知倒计时已取消。</summary>
+    private void CancelAway()
+    {
+        _awaySince = null;
+        if (!_countdownActive) return;
+        _countdownActive = false;
+        LockCountdownEnded?.Invoke(this, false);
     }
 
     private static string DescribeFaces(IReadOnlyList<DetectedFace> faces) =>
@@ -589,7 +610,7 @@ internal sealed class PresenceService : IDisposable
         lock (_frameLock) { _latestFrame?.Dispose(); _latestFrame = null; }
         _lastFaces = [];
         _lastFaceMessage = null;
-        _awaySince = null;
+        CancelAway();
         _multipleFacesWarned = false;
         _usingInput = false;
         _presentChecks = 0;

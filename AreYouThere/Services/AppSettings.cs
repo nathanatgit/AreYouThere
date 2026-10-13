@@ -48,6 +48,12 @@ internal sealed class AppSettings
     public string? Language { get; set; }
     /// <summary>检测到离开后多少秒锁定；0 为立即锁定。旧版本的 -1（延迟一个检测间隔）启动时换算成检测间隔秒数。</summary>
     public int LockDelaySeconds { get; set; } = 10;
+    /// <summary>锁定倒计时期间逐渐调暗屏幕。</summary>
+    public bool DimDuringCountdown { get; set; } = true;
+    /// <summary>倒计时结束时屏幕变暗的程度（百分比，越大越暗）。遮罩 100% 为全黑。</summary>
+    public double DimLevelPercent { get; set; } = 70;
+    /// <summary>调暗方式：黑色遮罩（所有显示器都有效）或降低显示器亮度。</summary>
+    public DimMode DimMode { get; set; }
 
     private static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AreYouThere", "settings.json");
@@ -73,6 +79,7 @@ internal sealed class AppSettings
 
 internal enum NotificationMode { QuietWhenFullscreen, Never, Always }
 internal enum AppTheme { System, Light, Dark }
+internal enum DimMode { Overlay, Brightness }
 
 // 源生成序列化，发布时开启裁剪也能正常工作
 [JsonSourceGenerationOptions(WriteIndented = true)]

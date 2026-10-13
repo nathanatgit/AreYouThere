@@ -16,7 +16,7 @@ internal sealed class TrayService : IDisposable
     private static readonly uint TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
 
     private const uint WM_APP = 0x8000, WM_NULL = 0x0000, WM_SETTINGCHANGE = 0x001A,WM_LBUTTONUP = 0x0202, WM_RBUTTONUP = 0x0205;
-    private const uint MF_STRING = 0x0, MF_CHECKED = 0x8, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x0100, TPM_RIGHTBUTTON = 0x0002;
+    private const uint MF_STRING = 0x0, MF_GRAYED = 0x1, MF_CHECKED = 0x8, MF_POPUP = 0x10, MF_SEPARATOR = 0x800, TPM_RETURNCMD = 0x0100, TPM_RIGHTBUTTON = 0x0002;
     private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_INFO = 0x10;
     private const uint NIM_ADD = 0x0, NIM_MODIFY = 0x1, NIM_DELETE = 0x2;
     private const uint NIIF_USER = 0x4, NIIF_NOSOUND = 0x10;
@@ -29,7 +29,9 @@ internal sealed class TrayService : IDisposable
     private IntPtr _icon;
     private readonly WndProc _newProc;
     private readonly Func<bool> _isEnabled;
+    private readonly Func<DateTimeOffset?> _pausedUntil;
     private readonly Action _toggle, _open, _exit;
+    private readonly Action<TimeSpan?> _pause;
     private string _tip = L.T("『在吗』正在运行", "AreYouThere is running");
     private bool _disposed;
     private const uint WM_WTSSESSION_CHANGE = 0x02B1, WTS_SESSION_LOCK = 0x7, WTS_SESSION_UNLOCK = 0x8;
@@ -38,9 +40,15 @@ internal sealed class TrayService : IDisposable
     public event Action<bool>? SessionLockChanged;
     public event Action? StartupLaunchRequested;
 
-    public TrayService(Window window, string iconPath, Func<bool> isEnabled, Action toggle, Action open, Action exit)
+    /// <summary>“暂停检测”可选的时长，托盘菜单和设置窗口共用。</summary>
+    public static readonly TimeSpan[] PauseChoices = [TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(2)];
+
+    /// <param name="pausedUntil">手动暂停到何时；没有手动暂停时为 null。</param>
+    /// <param name="pause">暂停一段时间；参数为 null 表示立即恢复。</param>
+    public TrayService(Window window, string iconPath, Func<bool> isEnabled, Func<DateTimeOffset?> pausedUntil,
+        Action toggle, Action<TimeSpan?> pause, Action open, Action exit)
     {
-        _isEnabled = isEnabled; _toggle = toggle; _open = open; _exit = exit;
+        _isEnabled = isEnabled; _pausedUntil = pausedUntil; _toggle = toggle; _pause = pause; _open = open; _exit = exit;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         _fallbackIconPath = iconPath;
         _icon = LoadTrayIcon();
@@ -123,7 +131,19 @@ internal sealed class TrayService : IDisposable
     private void ShowMenu()
     {
         var menu = CreatePopupMenu();
-        AppendMenu(menu, MF_STRING | (_isEnabled() ? MF_CHECKED : 0), 1, L.T("启用『在吗』", "Enable presence detection"));
+        var enabled = _isEnabled();
+        AppendMenu(menu, MF_STRING | (enabled ? MF_CHECKED : 0), 1, L.T("启用『在吗』", "Enable presence detection"));
+        // 暂停中显示“恢复检测”；否则是“暂停检测”子菜单（未启用时灰掉）。子菜单命令 100+ 对应 PauseChoices 的下标
+        IntPtr pauseMenu = IntPtr.Zero;
+        if (_pausedUntil() is { } until)
+            AppendMenu(menu, MF_STRING, 4, L.T($"恢复检测（已暂停到 {until.ToLocalTime():HH:mm}）", $"Resume detection (paused until {until.ToLocalTime():t})"));
+        else
+        {
+            pauseMenu = CreatePopupMenu();
+            for (var i = 0; i < PauseChoices.Length; i++)
+                AppendMenu(pauseMenu, MF_STRING, (uint)(100 + i), PowerPolicy.Describe(PauseChoices[i]));
+            AppendMenu(menu, MF_POPUP | (enabled ? 0 : MF_GRAYED), (nuint)pauseMenu, L.T("暂停检测", "Pause detection"));
+        }
         AppendMenu(menu, MF_STRING, 2, L.T("打开设置窗口", "Open settings"));
         AppendMenu(menu, MF_SEPARATOR, 0, null);
         AppendMenu(menu, MF_STRING, 3, L.T("退出", "Exit"));
@@ -131,8 +151,10 @@ internal sealed class TrayService : IDisposable
         SetForegroundWindow(_hwnd);
         var command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.X, point.Y, 0, _hwnd, IntPtr.Zero);
         PostMessage(_hwnd, WM_NULL, IntPtr.Zero, IntPtr.Zero); // 让菜单在点击别处时能正常关闭
-        DestroyMenu(menu);
+        DestroyMenu(menu); // 同时销毁挂在上面的子菜单
         if (command == 1) _toggle(); else if (command == 2) _open(); else if (command == 3) _exit();
+        else if (command == 4) _pause(null);
+        else if (command >= 100 && command < 100 + PauseChoices.Length) _pause(PauseChoices[command - 100]);
     }
 
     public void Dispose()
@@ -173,7 +195,7 @@ internal sealed class TrayService : IDisposable
     [DllImport("user32.dll", EntryPoint = "CallWindowProcW")] private static extern IntPtr CallWindowProc(IntPtr prev, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr menu, uint flags, uint id, string? text);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr menu, uint flags, nuint id, string? text);
     [DllImport("user32.dll")] private static extern bool DestroyMenu(IntPtr menu);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT point);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);

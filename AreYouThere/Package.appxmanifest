@@ -8,7 +8,7 @@
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap rescap desktop">
 
-  <Identity Name="NathanHan.AreYouThere" Publisher="CN=65060FB2-9417-4C15-9ABF-D5188EB4DF3A" Version="0.2.1.0" />
+  <Identity Name="NathanHan.AreYouThere" Publisher="CN=65060FB2-9417-4C15-9ABF-D5188EB4DF3A" Version="0.3.0.0" />
 
   <Properties>
     <DisplayName>在吗 AreYouThere</DisplayName>
