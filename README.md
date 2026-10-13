@@ -1,5 +1,6 @@
 <img src="docs/banner.png" width="100%" alt="在吗 AreYouThere：用普通摄像头判断你在不在电脑前，在的时候保持亮屏，离开后自动锁定">
 
+[![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-%E5%9C%A8%E5%90%97%20AreYouThere-0078D4)](https://apps.microsoft.com/detail/9N4T5SJXMJH3)
 [![Release downloads](https://img.shields.io/github/downloads/nathanatgit/AreYouThere/total?label=release%20downloads&color=0078D4)](https://github.com/nathanatgit/AreYouThere/releases)
 
 微软官方的“存在感知”(Presence Sensing) 只在部分新款设备上提供（需要专用的存在传感器）。『**在吗**』是它的轻量替代方案：用普通摄像头按间隔判断你是否在电脑前，在的时候阻止 Windows 自动息屏，离开后锁定电脑。
@@ -84,9 +85,13 @@ Windows 只能靠“多久没碰键盘鼠标”来猜你在不在，这带来两
 
 ## 下载
 
-到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载，x64 / x86 / ARM64 都有：
+<a href="https://apps.microsoft.com/detail/9N4T5SJXMJH3"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" width="200" alt="从 Microsoft Store 获取"></a>
 
-- **MSI**：安装版，推荐
+**Microsoft Store**（推荐）：商店负责签名和自动更新，安装时不会出现“未知发布者”提示，ARM 设备自动获取 ARM64 版本。
+
+也可以到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载，x64 / x86 / ARM64 都有：
+
+- **MSI**：安装版
 - **便携版 exe**：单个文件，下载即用
 - **zip**：文件夹版，解压后运行 `AreYouThere.exe`
 
