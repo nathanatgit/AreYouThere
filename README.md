@@ -1,19 +1,143 @@
-<img src="docs/banner.png" width="100%" alt="在吗 AreYouThere：用普通摄像头判断你在不在电脑前，在的时候保持亮屏，离开后自动锁定">
+<img src="docs/banner.png" width="100%" alt="在吗 AreYouThere: uses an ordinary webcam to tell whether you're at your PC, keeps the display on while you are, and locks it after you leave / 用普通摄像头判断你在不在电脑前，在的时候保持亮屏，离开后自动锁定">
 
 [![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-%E5%9C%A8%E5%90%97%20AreYouThere-0078D4)](https://apps.microsoft.com/detail/9N4T5SJXMJH3)
 [![Release downloads](https://img.shields.io/github/downloads/nathanatgit/AreYouThere/total?label=release%20downloads&color=0078D4)](https://github.com/nathanatgit/AreYouThere/releases)
 
+**English** | [简体中文](#简体中文)
+
+<a href="https://apps.microsoft.com/detail/9N4T5SJXMJH3"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft Store"></a>
+
+---
+
+# English
+
+A lightweight alternative to Microsoft's official Presence Sensing feature, which is only available on some newer devices with a dedicated presence sensor. **AreYouThere** (在吗) uses an ordinary webcam to check at intervals whether you're at the PC. While you are, it keeps Windows from turning the display off; after you leave, it locks the PC.
+
+**Contents:** [Why](#why) · [Use cases](#use-cases) · [Limitations](#limitations) · [Features](#features) · [Download](#download) · [Build](#build-from-source) · [Privacy](#privacy) · [License](#license)
+
+## Why
+
+Windows can only guess whether you're present from how long it has been since you touched the keyboard or mouse. That causes problems:
+
+- **You're there, but the screen dims or locks.** Reading long documents, reading code, reviewing drawings, or listening to an online meeting, you stay at the PC without touching the keyboard or mouse.
+- **You've left, but the screen stays on.** To avoid interruptions, many people set very long screen-off/lock timeouts, so the screen stays visible to others when they walk away.
+- **PowerToys Awake left on.** Sometimes you forget to press Win+L.
+
+AreYouThere uses the camera to tell whether you're really at the PC: the screen stays on while you are, and the PC locks after the delay you set once you leave. **Its primary goal is screen privacy**: when you're not there, nobody else sees your screen.
+
+It must not become a privacy risk itself: it runs fully offline with no networking. Frames are analyzed in memory and discarded immediately; nothing is saved or uploaded.
+
+## Use cases
+
+- **Offices and open-plan desks**: auto-lock when you step away for water, a meeting, or a quick chat, so colleagues can't see your mail, chats, or files; the screen doesn't dim while you read.
+- **Home**: lock after you leave so family, roommates, or kids can't see your chats or work, or touch the PC by accident.
+- **Long "look but don't touch" work**: reading, thinking through writing, code, drawings, dashboards, online courses or meetings, with no need to jiggle the mouse every few minutes.
+- **Public places** (cafés, libraries, coworking spaces): raise the face-area threshold so only you, close to the camera, are recognized; people beside or behind you are ignored, and the PC still locks when you leave. Follow the venue's rules, and note that the camera light may make others think you're recording.
+- **PCs without a presence sensor**: desktops with an external webcam, or older laptops without Presence Sensing.
+
+## Limitations
+
+- **Not for situations needing reliable security.** AreYouThere only detects faces; it **does not verify it's you**. Any sufficiently close face (someone sitting in your seat, even a photo) makes it think you're present. It is a convenience tool for reducing screen exposure, not a security product, and doesn't replace locking manually, Windows Hello, or your organization's security policy.
+- **There's a delay between leaving and locking.** At most about "detection interval + lock delay" (default 30 s + 10 s; with Smart Detection on, counted from your last keyboard/mouse input). A shorter interval locks sooner but uses the camera more often.
+
+## Features
+
+**Fully offline**: no networking, and nothing is uploaded, collected, or saved. Frames are analyzed in memory and discarded immediately; preferences are stored only on this PC.
+
+### Presence detection
+
+- Uses Windows' built-in face detection, every 30 seconds by default; configurable in hours/minutes/seconds (minimum 5 s).
+- **Smart Detection** (on by default): while you use the keyboard or mouse you're considered present and no detection runs; detection starts only after you've been idle for the set time. Saves power and the camera light is on less.
+- **Face-area threshold**: a face counts only if it fills at least this percentage of the frame, so distant people or photos on the wall are ignored. Raise it in public places so passers-by aren't mistaken for you.
+- Warns when multiple close faces are detected: as long as any one remains, you're considered present.
+- Pauses while the PC is locked and resumes after unlock.
+- When Battery Saver (Energy Saver since Windows 11 24H2) is on, detection pauses by default and defers to system power settings, resuming when it's off; you can choose to keep detecting. A notification is shown on both transitions.
+
+### Posture detection
+
+- Off by default; enable it under "Detection".
+- Reminds you to "sit up straight" when the face is below the posture line set in the preview, and to "mind your viewing distance" when the face is too large (too close). If the problem recurs within 5 minutes of a reminder, it suggests taking a break.
+- Posture-line height and distance thresholds are adjusted with sliders in the preview; the face box turns from orange to green when the posture is good.
+- Can run together with presence detection, or on its own interval (default every 10 minutes). With a custom interval, detection still runs while you type even if Smart Detection is on.
+
+### Lock policy
+
+- After you leave, AreYouThere locks the PC after the delay you set, so the screen isn't exposed. While you're there, the screen stays on regardless of the system's screen-off timeout.
+- Lock delay is configurable (default 10 s; 0 s locks immediately). Returning to the camera during the countdown cancels it.
+- The screen dims during the countdown (on by default) to warn you that it's about to lock. Two methods:
+  - **Black overlay**: works on all monitors; at 100% dimming the whole screen goes black, temporarily hiding the content.
+  - **Lower monitor brightness**: adjusts brightness directly on laptop panels and DDC/CI-capable external monitors; unsupported monitors automatically fall back to the overlay. Original brightness is restored when the countdown ends, when you return, or after locking, and also on the next launch if the app exited unexpectedly.
+- Dimming strength is set with a slider; hold and drag to preview, release to restore.
+
+### Camera and preview
+
+- Choose which camera to use; the list refreshes when cameras are plugged or unplugged. You're notified if there's no camera, no permission, or another app has exclusive access.
+- The camera is read in shared mode and not held open, so video conferencing and recording software keep working.
+- Frame rotation: some cameras deliver sideways or upside-down frames, and detection is only accurate once corrected; remembered per camera.
+- Live preview with face boxes showing the percentage of the frame each face covers, to help position the camera.
+- Power saving: the camera is opened for only about 1–2 seconds per check and off otherwise; the status card indicates power usage by detection frequency.
+
+### Interface and settings
+
+- Windows 11-style settings cards and an immersive title bar (falls back automatically on Windows 10).
+- Theme: follow system, light, or dark. UI in Simplified Chinese and English, following the system language by default.
+- Notifications: by default none while a full-screen app (e.g. a game) is in the foreground; or choose never or always.
+- The offline/privacy notice at the top can be dismissed and shown again under "Other settings".
+
+### Tray and startup
+
+- Tray icon: click to open the window; right-click to enable/disable or exit. Closing the window keeps the app running in the tray.
+- Pause detection: from the tray menu or window, pause for 15 minutes to 2 hours; it resumes automatically, or you can resume manually at any time.
+- Optional start with Windows (off by default): enabling it requires explicitly acknowledging the camera and public-place privacy notice. After you sign in, a reminder appears; detection starts with your current configuration and the app stays in the tray only after you click "OK". Opening the app manually still leaves detection off by default.
+- Hidden action: press and hold the "OK" button of the startup reminder for 5 seconds to permanently dismiss future startup reminders. This is saved only after a second confirmation; afterwards, detection starts automatically at sign-in. You can restore the reminder in settings, and re-enabling start with Windows also restores it.
+
+## Download
+
+**Microsoft Store** (recommended): the Store handles signing and automatic updates, avoids the "unknown publisher" prompt, and ARM devices automatically get the ARM64 build.
+
+<a href="https://apps.microsoft.com/detail/9N4T5SJXMJH3"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200" alt="Get it from Microsoft Store"></a>
+
+Or download from [Releases](https://github.com/nathanatgit/AreYouThere/releases) (x64, x86, and ARM64):
+
+- **MSI**: installer
+- **Portable exe**: a single file, ready to run
+- **zip**: folder version; extract and run `AreYouThere.exe`
+
+Requires Windows 10 version 1809 or later.
+
+If you enable start with Windows for the portable version, keep it at a fixed path; after moving or renaming it, re-enable the option. Startup applies to the current Windows user only, and Windows' startup app settings or organization policies may block it. Turning off startup doesn't stop detection that is already running; turn detection off separately or exit from the tray.
+
+## Build from source
+
+Requires the .NET 8 SDK:
+
+```powershell
+dotnet build AreYouThere\AreYouThere.csproj -p:Platform=x64
+```
+
+## Privacy
+
+AreYouThere runs fully offline and collects no data. See the [Privacy Policy](PRIVACY.md).
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+# 简体中文
+
 微软官方的“存在感知”(Presence Sensing) 只在部分新款设备上提供（需要专用的存在传感器）。『**在吗**』是它的轻量替代方案：用普通摄像头按间隔判断你是否在电脑前，在的时候阻止 Windows 自动息屏，离开后锁定电脑。
 
-A lightweight workaround for Microsoft's official Presence Sensing feature, which is only available on some modern devices: AreYouThere uses an ordinary webcam to check whether you're at the PC, keeps the display on while you are, and locks the PC after you leave.
+**目录：** [为什么做这个](#为什么做这个) · [适用场景](#适用场景) · [不适合的情况](#不适合的情况) · [功能](#功能) · [下载](#下载) · [从源码构建](#从源码构建) · [隐私](#隐私) · [许可证](#许可证)
 
 ## 为什么做这个
 
-Windows 只能靠“多久没碰键盘鼠标”来猜你在不在，这带来两个问题：
+Windows 只能靠“多久没碰键盘鼠标”来猜你在不在，这带来几个问题：
 
 - **人在，屏幕却暗了、锁了。** 读长文档、看代码、审图纸、听线上会议时，你一直坐在电脑前，只是没动键鼠。
 - **人走了，屏幕还亮着。** 为了不被打断，很多人把息屏/锁屏时间调得很长，起身离开时屏幕内容就一直暴露在旁人眼前。
-- **Powertoys Awake 忘记关闭。** 有时候你忘了按Win+L。
+- **PowerToys Awake 忘记关闭。** 有时候你忘了按 Win+L。
 
 『在吗』用摄像头判断你是否真的在电脑前：在的时候屏幕常亮，离开后在设定的延迟后锁定电脑。**它的首要目的是保护你的屏幕隐私**：人不在时，不让别人看到你的屏幕内容。
 
@@ -85,9 +209,9 @@ Windows 只能靠“多久没碰键盘鼠标”来猜你在不在，这带来两
 
 ## 下载
 
-<a href="https://apps.microsoft.com/detail/9N4T5SJXMJH3"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" width="200" alt="从 Microsoft Store 获取"></a>
-
 **Microsoft Store**（推荐）：商店负责签名和自动更新，安装时不会出现“未知发布者”提示，ARM 设备自动获取 ARM64 版本。
+
+<a href="https://apps.microsoft.com/detail/9N4T5SJXMJH3"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" width="200" alt="从 Microsoft Store 获取"></a>
 
 也可以到 [Releases](https://github.com/nathanatgit/AreYouThere/releases) 下载，x64 / x86 / ARM64 都有：
 
