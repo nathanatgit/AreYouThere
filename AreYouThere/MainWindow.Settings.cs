@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using AreYouThere.Services;
@@ -76,6 +77,30 @@ public sealed partial class MainWindow
     {
         if (!_ready) return;
         ApplyFaceArea();
+        SaveSettingsSoon();
+    }
+
+    private DispatcherQueueTimer? _saveTimer;
+
+    // 拖动滑块时 ValueChanged 每秒触发几十次：合并成停下后的一次写盘，不在 UI 线程上反复写文件
+    private void SaveSettingsSoon()
+    {
+        if (_saveTimer is null)
+        {
+            _saveTimer = DispatcherQueue.CreateTimer();
+            _saveTimer.Interval = TimeSpan.FromMilliseconds(500);
+            _saveTimer.IsRepeating = false;
+            _saveTimer.Tick += (_, _) => _settings.Save();
+        }
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
+    /// <summary>退出时把还没写盘的设置写掉。</summary>
+    private void FlushPendingSave()
+    {
+        if (_saveTimer is not { IsRunning: true }) return;
+        _saveTimer.Stop();
         _settings.Save();
     }
 
@@ -250,7 +275,7 @@ public sealed partial class MainWindow
         _settings.PostureMaxAreaPercent = PostureAreaSlider.Value;
         _presence.PostureMaxAreaPercent = PostureAreaSlider.Value;
         UpdatePostureText();
-        _settings.Save();
+        SaveSettingsSoon();
     }
 
     private void PostureSlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -259,7 +284,7 @@ public sealed partial class MainWindow
         _settings.PostureLineFromBottomPercent = PostureSlider.Value;
         _presence.PostureLinePercent = PostureSlider.Value;
         UpdatePostureText();
-        _settings.Save();
+        SaveSettingsSoon();
     }
 
     private void UpdatePostureText()
@@ -443,7 +468,7 @@ public sealed partial class MainWindow
         // 初始化时滑块被夹到最小值也会触发，那时调暗层还没创建；启动时由 ApplySettings 设置
         if (!_ready) return;
         ApplyDimLevel();
-        _settings.Save();
+        SaveSettingsSoon();
         UpdateDimPreview();
     }
 

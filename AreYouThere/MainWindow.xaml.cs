@@ -115,7 +115,8 @@ public sealed partial class MainWindow : Window
         // 电源来源（插拔电源）、系统设置和 Awake 状态都可能随时变化，定期刷新提示
         _policyTimer = DispatcherQueue.CreateTimer();
         _policyTimer.Interval = TimeSpan.FromSeconds(30);
-        _policyTimer.Tick += (_, _) => RefreshPolicyInfo();
+        // 窗口隐藏时看不到说明，不必每 30 秒枚举进程、读电源设置；重新显示时 Activated 会刷新
+        _policyTimer.Tick += (_, _) => { if (AppWindow.IsVisible) RefreshPolicyInfo(); };
         _policyTimer.Start();
         Activated += async (_, e) =>
         {
@@ -126,7 +127,7 @@ public sealed partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
-            _batterySaver.Dispose(); _policyTimer.Stop(); _pauseTimer.Stop(); _presence.Dispose(); _dim.Dispose(); _brightness.Restore(); _cameraCatalog.Dispose(); _tray.Dispose();
+            FlushPendingSave(); _batterySaver.Dispose(); _policyTimer.Stop(); _pauseTimer.Stop(); _presence.Dispose(); _dim.Dispose(); _brightness.Restore(); _cameraCatalog.Dispose(); _tray.Dispose();
         };
     }
 

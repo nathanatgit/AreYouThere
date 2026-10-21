@@ -430,32 +430,48 @@ internal sealed class PresenceService : IDisposable
         }
     }
 
+    // 旋转每帧都要做：复用缓冲区，避免每秒十几次分配几 MB 的大对象、频繁触发完整 GC
+    private byte[]? _rotateInput, _rotateOutput;
+
+    private static byte[] TakeBuffer(ref byte[]? slot, int size)
+    {
+        var buffer = Interlocked.Exchange(ref slot, null);
+        return buffer?.Length == size ? buffer : new byte[size];
+    }
+
     /// <summary>把 Bgra8 画面顺时针旋转 90/180/270 度。</summary>
-    private static SoftwareBitmap Rotate(SoftwareBitmap source, int degrees)
+    private SoftwareBitmap Rotate(SoftwareBitmap source, int degrees)
     {
         int w = source.PixelWidth, h = source.PixelHeight;
-        var input = new byte[w * h * 4];
+        var input = TakeBuffer(ref _rotateInput, w * h * 4);
+        var output = TakeBuffer(ref _rotateOutput, input.Length);
         source.CopyToBuffer(input.AsBuffer());
         var swap = degrees != 180;
         int nw = swap ? h : w, nh = swap ? w : h;
-        var output = new byte[input.Length];
-        var src = MemoryMarshal.Cast<byte, uint>(input);
-        var dst = MemoryMarshal.Cast<byte, uint>(output);
-        for (var y = 0; y < h; y++)
+        var src = MemoryMarshal.Cast<byte, uint>(input.AsSpan());
+        var dst = MemoryMarshal.Cast<byte, uint>(output.AsSpan());
+        // 按角度分开写循环，不在每个像素上做判断
+        switch (degrees)
         {
-            for (var x = 0; x < w; x++)
-            {
-                var (nx, ny) = degrees switch
-                {
-                    90 => (h - 1 - y, x),
-                    180 => (w - 1 - x, h - 1 - y),
-                    _ => (y, w - 1 - x),
-                };
-                dst[ny * nw + nx] = src[y * w + x];
-            }
+            case 90:
+                for (var y = 0; y < h; y++)
+                    for (var x = 0; x < w; x++)
+                        dst[x * nw + (h - 1 - y)] = src[y * w + x];
+                break;
+            case 180:
+                src.CopyTo(dst);
+                dst.Reverse();
+                break;
+            default:
+                for (var y = 0; y < h; y++)
+                    for (var x = 0; x < w; x++)
+                        dst[(w - 1 - x) * nw + y] = src[y * w + x];
+                break;
         }
         var result = new SoftwareBitmap(BitmapPixelFormat.Bgra8, nw, nh, BitmapAlphaMode.Premultiplied);
         result.CopyFromBuffer(output.AsBuffer());
+        _rotateInput = input;
+        _rotateOutput = output;
         return result;
     }
 

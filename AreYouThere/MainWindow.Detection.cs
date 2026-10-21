@@ -212,10 +212,12 @@ public sealed partial class MainWindow
         {
             try
             {
-                if (!AppWindow.IsVisible) return;
-                var source = new SoftwareBitmapSource();
-                await source.SetBitmapAsync(e.Bitmap);
-                PreviewElement.Source = source;
+                // 排队期间预览可能已关闭、窗口已隐藏或检测已停止：不再显示，免得旧画面又盖住占位图
+                if (!PreviewWanted || !_detection.Running) return;
+                // 复用同一个 SoftwareBitmapSource：每帧新建会不断分配新的图像表面，内存持续上涨
+                _previewSource ??= new SoftwareBitmapSource();
+                await _previewSource.SetBitmapAsync(e.Bitmap);
+                PreviewElement.Source = _previewSource;
                 PreviewPlaceholder.Visibility = Visibility.Collapsed;
                 PreviewNoteText.Visibility = Visibility.Visible;
                 DrawFaces(e.Faces, e.Bitmap.PixelWidth, e.Bitmap.PixelHeight);
@@ -231,12 +233,19 @@ public sealed partial class MainWindow
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush LabelTextBrush = new(Microsoft.UI.Colors.Black);
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush PostureBrush = new(Windows.UI.Color.FromArgb(255, 0xFF, 0x9F, 0x1C));
 
+    private SoftwareBitmapSource? _previewSource;
+    // 人脸框约每 500 毫秒才更新一次，预览却是每秒十几帧：输入没变就不重建画布上的元素
+    private (IReadOnlyList<DetectedFace>, int, int, bool, double, double)? _drawnFaces;
+
     // 画布按摄像头原始像素布局（外层 Viewbox 统一缩放），线宽和字号按画面宽度换算，缩放后大小一致
     private void DrawFaces(IReadOnlyList<DetectedFace> faces, int frameWidth, int frameHeight)
     {
+        var posture = _settings.PostureCheck;
+        var key = (faces, frameWidth, frameHeight, posture, PostureSlider.Value, PostureAreaSlider.Value);
+        if (_drawnFaces == key) return;
+        _drawnFaces = key;
         FaceCanvas.Children.Clear();
         var unit = frameWidth / 320.0;
-        var posture = _settings.PostureCheck;
         if (posture)
         {
             var y = frameHeight * (100 - PostureSlider.Value) / 100;
@@ -324,5 +333,6 @@ public sealed partial class MainWindow
         PreviewPlaceholder.Visibility = Visibility.Visible;
         PreviewNoteText.Visibility = Visibility.Collapsed;
         FaceCanvas.Children.Clear();
+        _drawnFaces = null;
     }
 }

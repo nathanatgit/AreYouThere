@@ -60,7 +60,9 @@ internal sealed class TrayService : IDisposable
 
     public void SetTooltip(string text)
     {
-        _tip = text.Length > 127 ? text[..127] : text;
+        var tip = text.Length > 127 ? text[..127] : text;
+        if (tip == _tip) return; // 每次检测都会刷新状态，内容没变就不打扰外壳
+        _tip = tip;
         var data = NewData(NIF_TIP);
         Shell_NotifyIcon(NIM_MODIFY, ref data);
     }
