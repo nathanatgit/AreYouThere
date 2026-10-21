@@ -52,6 +52,10 @@ public sealed partial class MainWindow : Window
         _dim = new DimOverlay(DispatcherQueue);
         SetupDimPreview();
         BrightnessDimmer.RestoreLeftover(); // 上次调暗后程序没正常结束：先把亮度恢复
+        if (!PowerOverride.Restore()) // 上次锁定期间的电源设置没来得及恢复（崩溃、锁定状态下关机）
+            ShowPowerProblem(L.T("部分电源设置未能恢复为原来的值，可以在 Windows 电源设置中手动修改。『在吗』下次启动时会再试一次。",
+                "Some power settings couldn't be restored. You can change them in Windows power settings. AreYouThere will try again the next time it starts."));
+        _ = ApplyAwayLockImageAsync(locked: false); // 同理恢复上次锁定期间换掉的锁屏图片
         _pauseTimer = DispatcherQueue.CreateTimer();
         _pauseTimer.Interval = PauseCheckInterval;
         _pauseTimer.Tick += (_, _) => CheckPauseExpired();
@@ -111,6 +115,7 @@ public sealed partial class MainWindow : Window
         _ready = true;
         ApplyBatterySaver(); // 启动时已经开着节电模式：先记下暂停原因，打开检测时就不会启动摄像头
         RefreshPolicyInfo();
+        InitProfiles();
 
         // 电源来源（插拔电源）、系统设置和 Awake 状态都可能随时变化，定期刷新提示
         _policyTimer = DispatcherQueue.CreateTimer();
@@ -127,7 +132,9 @@ public sealed partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
-            FlushPendingSave(); _batterySaver.Dispose(); _policyTimer.Stop(); _pauseTimer.Stop(); _presence.Dispose(); _dim.Dispose(); _brightness.Restore(); _cameraCatalog.Dispose(); _tray.Dispose();
+            FlushPendingSave(); _batterySaver.Dispose(); _policyTimer.Stop(); _pauseTimer.Stop(); _presence.Dispose(); _dim.Dispose(); _brightness.Restore(); PowerOverride.Restore();
+            // 锁屏图片的恢复是异步的；放到线程池上等，避免在 UI 线程上同步等待导致死锁
+            Task.Run(LockScreenImage.RestoreAsync).Wait(TimeSpan.FromSeconds(3)); _cameraCatalog.Dispose(); _tray.Dispose();
         };
     }
 
@@ -205,6 +212,8 @@ public sealed partial class MainWindow : Window
     private async void Tray_SessionLockChanged(bool locked)
     {
         _sessionLocked = locked;
+        ApplyAwayPower(locked); // 锁定时换成离开后的电源策略和锁屏图片，解锁时立即恢复（不等下面的延迟）
+        _ = ApplyAwayLockImageAsync(locked);
         if (locked)
         {
             StopDimming();

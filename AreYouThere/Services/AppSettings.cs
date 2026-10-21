@@ -31,8 +31,6 @@ internal sealed class AppSettings
     /// <summary>每个摄像头的画面旋转角度（顺时针 0/90/180/270），键为 CameraId。</summary>
     public Dictionary<string, int> CameraRotations { get; set; } = [];
     public bool PreviewEnabled { get; set; } = true;
-    /// <summary>默认离开后锁定：本工具的目的就是人不在时不让屏幕暴露给别人。</summary>
-    public bool LockWhenAway { get; set; } = true;
     /// <summary>人脸框至少占画面的百分比，才算“在电脑前”。</summary>
     public double MinFaceAreaPercent { get; set; } = 8;
     /// <summary>用户关掉了顶部的“完全离线”说明 / 隐私提醒。同样的提醒在开机自启动的确认和提醒对话框里仍会出现。</summary>
@@ -48,6 +46,21 @@ internal sealed class AppSettings
     public string? Language { get; set; }
     /// <summary>检测到离开后多少秒锁定；0 为立即锁定。旧版本的 -1（延迟一个检测间隔）启动时换算成检测间隔秒数。</summary>
     public int LockDelaySeconds { get; set; } = 10;
+    /// <summary>
+    /// 离开后的电源策略：电脑锁定时由『在吗』设置的 Windows 电源模式、锁定后息屏时间和睡眠时间（秒，0 为从不），解锁后恢复原值。
+    /// null 表示不修改。
+    /// </summary>
+    public PowerMode? AwayPowerModeAc { get; set; }
+    public PowerMode? AwayPowerModeDc { get; set; }
+    public uint? AwayScreenOffAcSeconds { get; set; }
+    public uint? AwaySleepAcSeconds { get; set; }
+    public uint? AwayScreenOffDcSeconds { get; set; }
+    public uint? AwaySleepDcSeconds { get; set; }
+
+    /// <summary>锁定期间的锁屏图片（复制到程序数据目录的副本路径），解锁后恢复原图片。null 表示不修改。</summary>
+    public string? AwayLockScreenImage { get; set; }
+
+    [JsonIgnore] public AwayPower AwayPower => new(AwayPowerModeAc, AwayPowerModeDc, AwayScreenOffAcSeconds, AwaySleepAcSeconds, AwayScreenOffDcSeconds, AwaySleepDcSeconds);
     /// <summary>锁定倒计时期间逐渐调暗屏幕。</summary>
     public bool DimDuringCountdown { get; set; } = true;
     /// <summary>倒计时结束时屏幕变暗的程度（百分比，越大越暗）。遮罩 100% 为全黑。</summary>
@@ -74,7 +87,11 @@ internal sealed class AppSettings
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this, AppSettingsJsonContext.Default.AppSettings));
+        Saved?.Invoke();
     }
+
+    /// <summary>设置保存后触发（在 UI 线程上），用来把改动同步到当前方案。</summary>
+    public event Action? Saved;
 }
 
 internal enum NotificationMode { QuietWhenFullscreen, Never, Always }

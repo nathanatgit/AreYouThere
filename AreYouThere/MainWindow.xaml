@@ -12,7 +12,9 @@
     <Grid.Resources>
       <!--
         文字层级（同一层级同一字号，层级越高字号越大）：
-        区域标题 20 粗体 → 卡片标题 16 → 卡片内容 14 → 灰色说明 12（系统次要文字颜色）
+        区域标题 20 粗体 → 卡片标题 16 → 卡片内的分组标题 14 粗体 → 卡片内容 14 → 灰色说明 12（系统次要文字颜色）
+        设置卡片的 FontSize="16" 也会传给卡片里的文字，所以卡片里的文字要显式用 CardContent；
+        可展开卡片（SettingsExpander）的标题不受 FontSize 影响，代码里用 CardTitle 样式的 TextBlock 作标题（见 CardHeader）
       -->
       <Style x:Key="SectionHeader" TargetType="TextBlock">
         <Setter Property="FontSize" Value="20" />
@@ -22,6 +24,10 @@
       <Style x:Key="CardTitle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="16" />
         <Setter Property="TextWrapping" Value="Wrap" />
+      </Style>
+      <Style x:Key="GroupLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
       </Style>
       <Style x:Key="CardContent" TargetType="TextBlock">
         <Setter Property="FontSize" Value="14" />
@@ -86,6 +92,19 @@
         <TextBlock x:Name="IntroText" Style="{StaticResource CardContent}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
         <InfoBar x:Name="OfflineBar" IsOpen="True" Severity="Success" IsClosable="True" Closed="NoticeBar_Closed" />
         <InfoBar x:Name="PrivacyBar" IsOpen="True" Severity="Warning" IsClosable="True" Closed="NoticeBar_Closed" />
+        <!-- 方案库（同 Windows 设置“蓝牙和其他设备”的卡片）：左边方案卡片可横向滚动，右边新建、导入、导出固定显示。
+             卡片在 MainWindow.Profiles.cs 里生成 -->
+        <Grid ColumnSpacing="8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <ScrollViewer HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Auto" VerticalScrollMode="Disabled"
+                        VerticalScrollBarVisibility="Disabled" Padding="0,0,0,12">
+            <StackPanel x:Name="ProfileGallery" Orientation="Horizontal" Spacing="8" />
+          </ScrollViewer>
+          <StackPanel x:Name="ProfileActions" Grid.Column="1" Spacing="8" VerticalAlignment="Top" />
+        </Grid>
       </StackPanel>
 
       <!-- 每个设置一行卡片（PowerToys / Windows 设置风格）：左边图标、标题、说明，右边是控件 -->
@@ -103,7 +122,6 @@
             <StackPanel Spacing="2">
               <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
               <TextBlock x:Name="PowerSummaryText" TextWrapping="Wrap" />
-              <TextBlock x:Name="TrayHintText" TextWrapping="Wrap" />
             </StackPanel>
           </toolkit:SettingsCard.Description>
           <!-- 检测开启时可暂停一段时间（菜单项在代码里按 TrayService.PauseChoices 生成）；暂停中换成“恢复” -->
@@ -173,7 +191,7 @@
             <toolkit:SettingsCard x:Name="PostureIntervalPanel" FontSize="16" ContentAlignment="Left">
               <StackPanel Spacing="8">
                 <!-- 不用 RadioButtons：它让每个选项一样高，未选中的选项下面会留出说明文字的空白 -->
-                <TextBlock x:Name="PostureIntervalHeader" />
+                <TextBlock x:Name="PostureIntervalHeader" Style="{StaticResource CardContent}" />
                 <StackPanel Spacing="4">
                   <RadioButton x:Name="PostureFollowOption" GroupName="PostureInterval" Checked="PostureIntervalMode_Checked">
                     <!-- 智能检测说明紧跟在“跟随”选项下面，因为它只影响这个选项 -->
@@ -191,37 +209,20 @@
         </toolkit:SettingsExpander>
 
         <TextBlock x:Name="AwayHeader" Style="{StaticResource SectionHeader}" />
-        <!-- PowerToys Awake 提示：跟随系统电源策略时是冲突警告，由『在吗』接管时只是信息提示 -->
-        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="False" Margin="0,0,0,4" />
-        <!-- 离开电脑后：展开后是两个选项和锁定时机（只在锁定模式下显示）。默认展开，选项一直可见。
-             说明文字放在选中的选项下面；不用 RadioButtons，它让每个选项一样高，未选中的选项下面会留出空白 -->
+        <!-- PowerToys Awake 提示：Awake 保持屏幕常亮时，锁定后屏幕不会息屏 -->
+        <InfoBar x:Name="AwakeWarning" IsOpen="False" Visibility="Collapsed" Severity="Informational" IsClosable="False" Margin="0,0,0,4" />
+        <!-- 离开电脑后：由『在吗』锁定电脑。说明写在卡片描述里，展开后是锁定时机和倒计时期间的压暗设置。默认展开 -->
         <toolkit:SettingsExpander x:Name="AwayCard" FontSize="16" IsExpanded="True">
           <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Description><TextBlock x:Name="AwayLockNote" TextWrapping="Wrap" /></toolkit:SettingsExpander.Description>
           <toolkit:SettingsExpander.Items>
-            <toolkit:SettingsCard FontSize="16" ContentAlignment="Left">
-              <StackPanel Spacing="4">
-                <RadioButton x:Name="AwayFollowOption" GroupName="AwayMode" Checked="AwayMode_Checked">
-                  <StackPanel Spacing="2">
-                    <TextBlock x:Name="AwayFollowText" TextWrapping="Wrap" />
-                    <TextBlock x:Name="AwayFollowNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
-                  </StackPanel>
-                </RadioButton>
-                <RadioButton x:Name="AwayLockOption" GroupName="AwayMode" Checked="AwayMode_Checked">
-                  <StackPanel Spacing="2">
-                    <TextBlock x:Name="AwayLockText" TextWrapping="Wrap" />
-                    <TextBlock x:Name="AwayLockNote" Style="{StaticResource Hint}" Visibility="Collapsed" />
-                  </StackPanel>
-                </RadioButton>
-              </StackPanel>
-            </toolkit:SettingsCard>
             <!-- 只用时长选择器：0 秒为立即锁定，大于 0 为倒计时 -->
-            <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16" Visibility="Collapsed">
+            <toolkit:SettingsCard x:Name="LockDelayCard" FontSize="16">
               <toolkit:SettingsCard.Description><TextBlock x:Name="LockDelayHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
               <local:DurationPicker x:Name="LockDelayPicker" ShowHours="False" />
             </toolkit:SettingsCard>
             <!-- 倒计时期间调暗屏幕：只在锁定模式且延迟大于 0 时有意义 -->
             <toolkit:SettingsCard x:Name="DimCard" FontSize="16" Visibility="Collapsed">
-              <toolkit:SettingsCard.Description><TextBlock x:Name="DimHintText" TextWrapping="Wrap" /></toolkit:SettingsCard.Description>
               <ToggleSwitch x:Name="DimSwitch" Toggled="DimSwitch_Toggled" />
             </toolkit:SettingsCard>
             <!-- 调暗方式：黑色遮罩（100% 为全黑，临时保护隐私）或降低显示器亮度；说明只显示在选中的选项下面 -->
@@ -246,8 +247,76 @@
               <StackPanel Orientation="Horizontal" Spacing="12">
                 <Slider x:Name="DimLevelSlider" Width="180" Minimum="20" Maximum="100" StepFrequency="5" VerticalAlignment="Center"
                         ValueChanged="DimLevelSlider_ValueChanged" />
-                <TextBlock x:Name="DimLevelText" MinWidth="40" VerticalAlignment="Center" />
+                <TextBlock x:Name="DimLevelText" Style="{StaticResource CardContent}" MinWidth="40" VerticalAlignment="Center" />
               </StackPanel>
+            </toolkit:SettingsCard>
+          </toolkit:SettingsExpander.Items>
+        </toolkit:SettingsExpander>
+        <!-- 锁定期间的锁屏图片：锁定时换成所选图片，解锁后恢复。未选择时为“不修改” -->
+        <toolkit:SettingsCard x:Name="LockImageCard" FontSize="16">
+          <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xEB9F;" /></toolkit:SettingsCard.HeaderIcon>
+          <toolkit:SettingsCard.Description>
+            <StackPanel Spacing="2">
+              <TextBlock x:Name="LockImageHintText" TextWrapping="Wrap" />
+              <TextBlock x:Name="LockImageOtherAppText" TextWrapping="Wrap" Visibility="Collapsed" />
+            </StackPanel>
+          </toolkit:SettingsCard.Description>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border CornerRadius="4" VerticalAlignment="Center">
+              <Image x:Name="LockImagePreview" Height="45" MaxWidth="80" Stretch="Uniform" />
+            </Border>
+            <TextBlock x:Name="LockImageUnchangedText" Style="{StaticResource CardContent}" VerticalAlignment="Center" />
+            <Button x:Name="LockImageClearButton" VerticalAlignment="Center" Click="LockImageClear_Click" />
+            <Button x:Name="LockImagePickButton" VerticalAlignment="Center" Click="LockImagePick_Click" />
+          </StackPanel>
+        </toolkit:SettingsCard>
+
+        <!-- 电源策略：与 Windows 设置 › 系统 › 电源 的两组设置相同。每项第一个选项是“不修改（当前：…）”，
+             下拉选项在 MainWindow.Power.cs 里按当前系统值生成 -->
+        <TextBlock x:Name="PowerHeader" Style="{StaticResource SectionHeader}" />
+        <StackPanel Spacing="2" Margin="1,0,0,8">
+          <TextBlock x:Name="PowerHintText" Style="{StaticResource Hint}" />
+          <HyperlinkButton x:Name="PowerSettingsLink" Padding="0" FontSize="12" NavigateUri="ms-settings:powersleep" />
+        </StackPanel>
+        <InfoBar x:Name="PowerProblem" IsOpen="False" Visibility="Collapsed" Severity="Warning" IsClosable="True" Margin="0,0,0,4" />
+        <toolkit:SettingsExpander x:Name="PowerModeCard" FontSize="16" IsExpanded="True">
+          <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xEC4A;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Description><TextBlock x:Name="PowerModeHintText" TextWrapping="Wrap" /></toolkit:SettingsExpander.Description>
+          <TextBlock x:Name="PowerModeCurrentText" Style="{StaticResource CardContent}" />
+          <toolkit:SettingsExpander.Items>
+            <toolkit:SettingsCard x:Name="PowerModeAcCard" FontSize="16">
+              <ComboBox x:Name="PowerModeAcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Name="PowerModeDcCard" FontSize="16">
+              <ComboBox x:Name="PowerModeDcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
+            </toolkit:SettingsCard>
+          </toolkit:SettingsExpander.Items>
+        </toolkit:SettingsExpander>
+        <toolkit:SettingsExpander x:Name="TimeoutCard" FontSize="16" IsExpanded="True">
+          <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE708;" /></toolkit:SettingsExpander.HeaderIcon>
+          <toolkit:SettingsExpander.Description>
+            <StackPanel Spacing="4">
+              <!-- 用电池时锁定期间从不睡眠：电量耗尽会直接关机 -->
+              <TextBlock x:Name="NoSleepWarningText" TextWrapping="Wrap" Visibility="Collapsed"
+                         Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+              <!-- 现代待机的电脑：睡眠一段时间后可能转入休眠 -->
+              <TextBlock x:Name="StandbyNoteText" TextWrapping="Wrap" Visibility="Collapsed" />
+            </StackPanel>
+          </toolkit:SettingsExpander.Description>
+          <toolkit:SettingsExpander.Items>
+            <TextBlock x:Name="TimeoutAcHeader" Style="{StaticResource GroupLabel}" Margin="16,12,0,4" />
+            <toolkit:SettingsCard x:Name="ScreenOffAcCard" FontSize="16">
+              <ComboBox x:Name="ScreenOffAcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Name="SleepAcCard" FontSize="16">
+              <ComboBox x:Name="SleepAcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
+            </toolkit:SettingsCard>
+            <TextBlock x:Name="TimeoutDcHeader" Style="{StaticResource GroupLabel}" Margin="16,12,0,4" />
+            <toolkit:SettingsCard x:Name="ScreenOffDcCard" FontSize="16">
+              <ComboBox x:Name="ScreenOffDcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Name="SleepDcCard" FontSize="16">
+              <ComboBox x:Name="SleepDcBox" MinWidth="200" SelectionChanged="PowerBox_SelectionChanged" />
             </toolkit:SettingsCard>
           </toolkit:SettingsExpander.Items>
         </toolkit:SettingsExpander>

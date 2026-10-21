@@ -1,50 +1,11 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace AreYouThere.Services;
 
-/// <summary>当前电源计划中与“离开后”相关的超时设置，单位秒，0 表示从不。</summary>
-internal sealed record PowerPolicy(bool OnBattery, uint DisplayOffSeconds, uint SleepSeconds, uint? ScreenSaverLockSeconds)
+/// <summary>时长的显示文字。</summary>
+internal static class PowerPolicy
 {
-    private static Guid SubVideo = new("7516b95f-f776-4464-8c53-06167f40cc99");
-    private static Guid VideoIdle = new("3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e");
-    private static Guid SubSleep = new("238c9fa8-0aad-41ed-83f4-97be242c8f20");
-    private static Guid StandbyIdle = new("29f6c1db-86da-48c5-9fdb-f2b67b1f44da");
-
-    public static PowerPolicy Read()
-    {
-        var onBattery = GetSystemPowerStatus(out var status) && status.ACLineStatus == 0;
-        uint display = 0, sleep = 0;
-        if (PowerGetActiveScheme(IntPtr.Zero, out var schemePtr) == 0)
-        {
-            try
-            {
-                var scheme = Marshal.PtrToStructure<Guid>(schemePtr);
-                display = ReadValue(scheme, SubVideo, VideoIdle, onBattery);
-                sleep = ReadValue(scheme, SubSleep, StandbyIdle, onBattery);
-            }
-            finally { LocalFree(schemePtr); }
-        }
-
-        uint? screenSaverLock = null;
-        if (SystemParametersInfo(SPI_GETSCREENSAVEACTIVE, 0, out var active, 0) && active != 0
-            && SystemParametersInfo(SPI_GETSCREENSAVESECURE, 0, out var secure, 0) && secure != 0
-            && SystemParametersInfo(SPI_GETSCREENSAVETIMEOUT, 0, out var timeout, 0))
-            screenSaverLock = (uint)timeout;
-
-        return new PowerPolicy(onBattery, display, sleep, screenSaverLock);
-    }
-
-    private static uint ReadValue(Guid scheme, Guid subgroup, Guid setting, bool onBattery)
-    {
-        uint value;
-        var result = onBattery
-            ? PowerReadDCValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, out value)
-            : PowerReadACValueIndex(IntPtr.Zero, ref scheme, ref subgroup, ref setting, out value);
-        return result == 0 ? value : 0;
-    }
-
     /// <summary>时长文字。中文直接嵌在句中（“每 1 分钟检测一次”），英文同理（“every 1 minute”）。</summary>
     public static string Describe(TimeSpan span) => L.Zh
         ? span.TotalSeconds switch
@@ -63,23 +24,6 @@ internal sealed record PowerPolicy(bool OnBattery, uint DisplayOffSeconds, uint 
         };
 
     private static string Plural(double value, string unit) => $"{value:0} {unit}{(Math.Round(value) == 1 ? "" : "s")}";
-
-    public static string DescribeTimeout(uint seconds) => seconds == 0
-        ? L.T("从不", "never")
-        : L.T(Describe(TimeSpan.FromSeconds(seconds)) + "后", "after " + Describe(TimeSpan.FromSeconds(seconds)));
-
-    private const uint SPI_GETSCREENSAVETIMEOUT = 0x000E, SPI_GETSCREENSAVEACTIVE = 0x0010, SPI_GETSCREENSAVESECURE = 0x0076;
-    [StructLayout(LayoutKind.Sequential)] private struct SYSTEM_POWER_STATUS
-    {
-        public byte ACLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag;
-        public int BatteryLifeTime, BatteryFullLifeTime;
-    }
-    [DllImport("kernel32.dll")] private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS status);
-    [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr mem);
-    [DllImport("powrprof.dll")] private static extern uint PowerGetActiveScheme(IntPtr rootKey, out IntPtr activeScheme);
-    [DllImport("powrprof.dll")] private static extern uint PowerReadACValueIndex(IntPtr rootKey, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
-    [DllImport("powrprof.dll")] private static extern uint PowerReadDCValueIndex(IntPtr rootKey, ref Guid scheme, ref Guid subgroup, ref Guid setting, out uint value);
-    [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint param, out int value, uint winIni);
 }
 
 /// <summary>
@@ -88,11 +32,10 @@ internal sealed record PowerPolicy(bool OnBattery, uint DisplayOffSeconds, uint 
 internal static class PowerToysAwake
 {
     /// <summary>
+    /// 『在吗』离开后照常锁定，Awake 不影响锁定；但 Awake 保持屏幕常亮时，锁定后屏幕也不会息屏，需要提示。
     /// 没有需要提示的情况时返回 null。
-    /// 跟随系统电源策略时，Awake 会让离开后的息屏/锁屏失效，是真正的冲突（IsConflict = true），建议改由『在吗』接管；
-    /// 由『在吗』接管时锁屏不受影响，只在 Awake 保持屏幕常亮时提示锁屏后屏幕也不会息屏。
     /// </summary>
-    public static (string Message, bool IsConflict)? Check(bool lockWhenAway)
+    public static string? Check()
     {
         Process[] processes;
         try { processes = Process.GetProcessesByName("PowerToys.Awake"); }
@@ -113,14 +56,11 @@ internal static class PowerToysAwake
         catch
         {
             // 读不到 Awake 的设置：不知道它当前的模式，按可能的情况提示
-            return lockWhenAway
-                ? (L.T("检测到 PowerToys Awake 正在运行。如果它设置为保持屏幕常亮，即使『在吗』锁定了电脑，屏幕也不会息屏。",
-                    "PowerToys Awake is running. If it keeps the screen on, the screen won't turn off even after AreYouThere locks the PC."), false)
-                : (L.T("检测到 PowerToys Awake 正在运行。如果它处于保持唤醒状态，可能与跟随系统电源策略冲突，离开后不会息屏或锁屏。建议切换为由『在吗』接管。",
-                    "PowerToys Awake is running. If it is keeping the PC awake, it may conflict with following Windows power settings, so the screen may not turn off or lock after you leave. Consider letting AreYouThere lock the PC instead."), true);
+            return L.T("检测到 PowerToys Awake 正在运行。如果它设置为保持屏幕常亮，即使『在吗』锁定了电脑，屏幕也不会息屏。",
+                "PowerToys Awake is running. If it keeps the screen on, the screen won't turn off even after AreYouThere locks the PC.");
         }
 
-        // Awake 模式：0 被动（使用电源计划）、1 无限期、2 定时、3 保持到指定时间
+        // Awake 模式：0 被动（使用电源计划）、1 无限期、2 定时、3 保持到指定时间。只让电脑不睡眠时不必提示
         var modeText = mode switch
         {
             1 => L.T("无限期保持唤醒", "Keep awake indefinitely"),
@@ -128,20 +68,8 @@ internal static class PowerToysAwake
             3 => L.T("保持唤醒到指定时间", "Keep awake until expiration"),
             _ => null
         };
-        if (modeText is null) return null;
-
-        if (lockWhenAway)
-        {
-            // 只让电脑不睡眠时，『在吗』照常锁定、屏幕照常息屏，不必提示
-            if (!keepDisplayOn) return null;
-            return (L.T($"PowerToys Awake 当前为“{modeText}”模式并保持屏幕常亮：『在吗』仍会在你离开后锁定电脑，但锁屏后不会息屏。",
-                $"PowerToys Awake is set to \"{modeText}\" and keeps the screen on. AreYouThere still locks the PC after you leave, but the screen won't turn off after locking."), false);
-        }
-
-        var effect = keepDisplayOn
-            ? L.T("屏幕会一直保持常亮，你离开后也不会息屏或锁屏，", "The screen stays on, so it won't turn off or lock after you leave. ")
-            : L.T("电脑不会进入睡眠，依赖睡眠的自动锁屏可能不会发生，", "The PC won't go to sleep, so it may not lock automatically if locking depends on sleep. ");
-        return (L.T($"PowerToys Awake 当前为“{modeText}”模式：{effect}这与跟随系统电源策略冲突。建议切换为由『在吗』接管，离开后由『在吗』锁定电脑。",
-            $"PowerToys Awake is set to \"{modeText}\". {effect}This conflicts with following Windows power settings. Consider letting AreYouThere lock the PC when you leave instead."), true);
+        if (modeText is null || !keepDisplayOn) return null;
+        return L.T($"PowerToys Awake 当前为“{modeText}”模式并保持屏幕常亮：『在吗』仍会在你离开后锁定电脑，但锁屏后不会息屏。",
+            $"PowerToys Awake is set to \"{modeText}\" and keeps the screen on. AreYouThere still locks the PC after you leave, but the screen won't turn off after locking.");
     }
 }
