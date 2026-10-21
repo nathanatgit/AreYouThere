@@ -46,8 +46,6 @@ internal sealed class PresenceService : IDisposable
     // 显示预览时额外检测人脸，只用于实时画框和显示面积，不参与在场判断。
     private static readonly TimeSpan OverlayInterval = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>true：离开后由本程序锁定电脑；false：交还系统电源策略。</summary>
-    public bool LockWhenAway { get; set; }
     /// <summary>检测到离开后多久锁定；0 为立即锁定。</summary>
     public TimeSpan LockDelay { get; set; } = TimeSpan.FromSeconds(10);
     /// <summary>人脸框至少占画面多少百分比才算“在电脑前”；远处的人或墙上的照片通常较小。0 表示任何人脸都算。</summary>
@@ -487,15 +485,8 @@ internal sealed class PresenceService : IDisposable
             return now + gap;
         }
         _presentChecks = 0;
-        if (!LockWhenAway)
-        {
-            CancelAway();
-            KeepAwake(false);
-            report(L.T("未检测到人脸，已交还系统电源策略", "No qualifying face detected; following Windows power settings"));
-            return now + interval;
-        }
 
-        // 接管模式：锁定之前继续保持唤醒，不让系统超时抢先息屏
+        // 锁定之前继续保持唤醒，不让系统超时抢先息屏
         var delay = LockDelay;
         if (_awaySince is null)
         {

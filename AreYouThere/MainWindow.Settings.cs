@@ -51,8 +51,6 @@ public sealed partial class MainWindow
         UpdateBatterySaverNotes();
         ShowRestoreButton(_settings.SkipStartupReminder);
         SelectByTag(LanguageBox, _settings.Language ?? "system");
-        AwayFollowOption.IsChecked = !_settings.LockWhenAway;
-        AwayLockOption.IsChecked = _settings.LockWhenAway;
         // 旧版本的“延迟一个在场检测间隔”（-1）换算成当前的检测间隔秒数；0 为立即锁定
         if (_settings.LockDelaySeconds < 0) _settings.LockDelaySeconds = (int)_settings.IntervalSeconds;
         LockDelayPicker.Value = TimeSpan.FromSeconds(_settings.LockDelaySeconds);
@@ -64,7 +62,6 @@ public sealed partial class MainWindow
         DimBrightnessOption.IsChecked = _settings.DimMode == DimMode.Brightness;
         _ = UpdateDimModeNotesAsync();
         UpdateLockCards();
-        _presence.LockWhenAway = _settings.LockWhenAway;
         _presence.LockDelay = TimeSpan.FromSeconds(_settings.LockDelaySeconds);
         FaceAreaSlider.Value = Math.Clamp(_settings.MinFaceAreaPercent, FaceAreaSlider.Minimum, FaceAreaSlider.Maximum);
         ApplyFaceArea();
@@ -385,22 +382,11 @@ public sealed partial class MainWindow
         return L.T($"检测间隔以{string.Join("→", items)}的方式递增", $"The check interval grows as {string.Join(" → ", items)}");
     }
 
-    private void AwayMode_Checked(object sender, RoutedEventArgs e)
-    {
-        if (!_ready) return;
-        _settings.LockWhenAway = AwayLockOption.IsChecked == true;
-        _settings.Save();
-        _presence.LockWhenAway = _settings.LockWhenAway;
-        UpdateLockCards();
-        RefreshPolicyInfo();
-    }
-
-    // 锁定时机只在由『在吗』锁定时有意义；调暗只在有倒计时（延迟大于 0）时有意义
+    // 压暗只在有倒计时（延迟大于 0）时有意义
     private void UpdateLockCards()
     {
-        LockDelayCard.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
         DimCard.Visibility = DimModeCard.Visibility = DimLevelCard.Visibility =
-            _settings.LockWhenAway && _settings.LockDelaySeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
+            _settings.LockDelaySeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
         DimModeCard.IsEnabled = DimLevelCard.IsEnabled = _settings.DimDuringCountdown;
     }
 
@@ -515,51 +501,22 @@ public sealed partial class MainWindow
     private void RefreshPolicyInfo()
     {
         if (!_ready) return;
-        var interval = TimeSpan.FromSeconds(IntervalSeconds);
-        if (_settings.LockWhenAway)
-        {
-            var delay = TimeSpan.FromSeconds(_settings.LockDelaySeconds);
-            var total = PowerPolicy.Describe(LongestCheckGap + delay);
-            // 智能检测时“离开”从最后一次键鼠操作算起，第一项是停止操作后的等待时间；间隔递增时最坏要等一个最长检测间隔
-            var (zhTerm, enTerm) = IntervalGrows ? ("最长检测间隔 + 锁定延迟", "maximum check interval + lock delay")
-                : _settings.SmartDetection ? ("停止操作等待 + 锁定延迟", "idle period + lock delay") : ("检测间隔 + 锁定延迟", "check interval + lock delay");
-            AwayLockNote.Text = delay == TimeSpan.Zero
-                ? L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后立即锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（{zhTerm}）。",
-                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. The PC locks as soon as a check detects no qualifying face. Returning after the PC has locked does not unlock it.\nThe estimated maximum time from leaving to locking is {total} ({enTerm}).")
-                : L.T($"在电脑前时保持屏幕常亮，不受系统超时影响。检测到离开后再等 {PowerPolicy.Describe(delay)}，期间仍未回来就锁定电脑；回到摄像头前会取消锁定。\n从你离开到锁定，最长约 {total}（{zhTerm}）。",
-                    $"The screen stays on while a qualifying face is detected, overriding Windows timeouts. If a check detects no qualifying face, a {PowerPolicy.Describe(delay)} lock countdown begins. Detecting a qualifying face before the countdown ends cancels the pending lock.\nThe estimated maximum time from leaving to locking is {total} ({enTerm}).");
-        }
-        else
-        {
-            var p = PowerPolicy.Read();
-            var source = p.OnBattery ? L.T("使用电池", "on battery") : L.T("接通电源", "plugged in");
-            var lockText = p.ScreenSaverLockSeconds is uint s
-                ? L.T($"屏幕保护程序 {PowerPolicy.Describe(TimeSpan.FromSeconds(s))}后启动并锁定", $"the screen saver starts after {PowerPolicy.Describe(TimeSpan.FromSeconds(s))} of inactivity and requires sign-in when you return")
-                : L.T("未设置屏保锁定，通常在电脑睡眠后需要重新登录", "the screen saver is not set to require sign-in; whether sign-in is required after sleep depends on Windows settings");
-            var (zhGap, enGap) = IntervalGrows ? ("最长检测间隔", "maximum check interval") : ("检测间隔", "check interval");
-            var after = p.DisplayOffSeconds == 0
-                ? L.T("当前电源计划不会自动关闭屏幕。", "Your power plan never turns off the screen.")
-                : L.T($"离开后最长约 {PowerPolicy.Describe(LongestCheckGap + TimeSpan.FromSeconds(p.DisplayOffSeconds))}息屏（{zhGap} + 系统息屏时间）。",
-                    $"After you leave, the screen turns off within about {PowerPolicy.Describe(LongestCheckGap + TimeSpan.FromSeconds(p.DisplayOffSeconds))} ({enGap} + Windows screen timeout).");
-            var screenTimeout = p.DisplayOffSeconds == 0 ? "never" : $"after {PowerPolicy.Describe(TimeSpan.FromSeconds(p.DisplayOffSeconds))} of inactivity";
-            var sleepTimeout = p.SleepSeconds == 0 ? "never" : $"after {PowerPolicy.Describe(TimeSpan.FromSeconds(p.SleepSeconds))} of inactivity";
-            AwayFollowNote.Text = L.T($"当前电源计划（{source}）：无操作 {PowerPolicy.DescribeTimeout(p.DisplayOffSeconds)}关闭屏幕，{PowerPolicy.DescribeTimeout(p.SleepSeconds)}睡眠；{lockText}。\n{after}",
-                $"Current power plan ({source}): screen off: {screenTimeout}; sleep: {sleepTimeout}; {lockText}.\n{after}");
-        }
-        // 说明只显示在选中的选项下面
-        AwayLockNote.Visibility = _settings.LockWhenAway ? Visibility.Visible : Visibility.Collapsed;
-        AwayFollowNote.Visibility = _settings.LockWhenAway ? Visibility.Collapsed : Visibility.Visible;
+        var delay = TimeSpan.FromSeconds(_settings.LockDelaySeconds);
+        AwayLockNote.Text = delay == TimeSpan.Zero
+            ? L.T("检测到离开后立即锁定。", "Locks the PC as soon as you leave.")
+            : L.T($"检测到离开后等待 {PowerPolicy.Describe(delay)}，回到摄像头前会取消锁定。",
+                $"Waits {PowerPolicy.Describe(delay)} after you leave, then locks the PC. Returning to the camera cancels the lock.");
 
-        // 跟随系统电源策略时是冲突（警告）；由『在吗』接管时只是提示锁屏后不会息屏（信息）
-        var awake = PowerToysAwake.Check(_settings.LockWhenAway);
-        if (awake is { } a)
+        // Awake 保持屏幕常亮时，『在吗』照常锁定，但锁定后屏幕不会息屏
+        var awake = PowerToysAwake.Check();
+        if (awake is not null)
         {
-            AwakeWarning.Title = a.IsConflict ? L.T("可能存在冲突", "Possible conflict") : L.T("提示", "Note");
-            AwakeWarning.Severity = a.IsConflict ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
-            AwakeWarning.Message = a.Message;
+            AwakeWarning.Title = L.T("提示", "Note");
+            AwakeWarning.Message = awake;
         }
         AwakeWarning.IsOpen = awake is not null;
         AwakeWarning.Visibility = awake is null ? Visibility.Collapsed : Visibility.Visible;
+        RefreshPowerUi(); // Windows 里的电源设置可能被改过，刷新“当前”值
         RefreshPowerInfo();
     }
 
@@ -598,9 +555,9 @@ public sealed partial class MainWindow
                 var posture = PowerPolicy.Describe(TimeSpan.FromSeconds(_settings.PostureIntervalSeconds));
                 reason += L.T($"；坐姿每 {posture}检测一次", $"; posture checked every {posture}");
             }
-            // 接管模式下，离开后到锁定前屏幕保持常亮、摄像头持续工作；延迟 1 分钟以上时值得提醒
+            // 离开后到锁定前屏幕保持常亮、摄像头持续工作；延迟 1 分钟以上时值得提醒
             var lockDelay = _settings.LockDelaySeconds;
-            if (_settings.LockWhenAway && lockDelay >= 60)
+            if (lockDelay >= 60)
             {
                 level = Math.Max(level, 1);
                 reason += L.T("；离开后到锁定前屏幕保持常亮", "; the screen stays on during the lock countdown");

@@ -29,7 +29,7 @@ public sealed partial class MainWindow
         CameraHintText.Text = L.T("名称不准确时，可以开启检测后看预览确认。", "If the names are unclear, turn on detection and check the preview.");
         DetectionHeader.Text = L.T("检测", "Detection");
         AwayHeader.Text = L.T("锁定策略", "Lock settings");
-        AwayCard.Header = L.T("离开电脑后", "When you leave");
+        AwayCard.Header = CardHeader(L.T("离开电脑后", "When you leave"));
         OtherHeader.Text = L.T("其他设置", "Other settings");
         NotificationCard.Header = L.T("通知", "Notifications");
         NotifyQuietOption.Content = L.T("全屏应用（如游戏）在前台时不通知", "Hide notifications while using a full-screen app, such as a game");
@@ -49,10 +49,10 @@ public sealed partial class MainWindow
         StartupStatusText.Text = DefaultStartupStatus();
         RestoreStartupReminderButton.Content = L.T("恢复每次开机运行提醒", "Restore startup reminders");
         ToolTipService.SetToolTip(PreviewSwitch, L.T("显示摄像头预览", "Show camera preview"));
-        SmartCard.Header = L.T("智能检测", "Smart detection");
+        SmartCard.Header = CardHeader(L.T("智能检测", "Smart detection"));
         SmartHintText.Text = L.T("在操作电脑时（鼠标、键盘操作）不检测，当停止操作后一段时间才启用检测；关闭则按照固定时间检测。",
             "Presence checks pause while you're using the keyboard or mouse and resume after the idle period you set below. Turn this off to check at a fixed interval.");
-        PostureCard.Header = L.T("坐姿检测", "Posture reminders");
+        PostureCard.Header = CardHeader(L.T("坐姿检测", "Posture reminders"));
         PostureHintText.Text = L.T("检测会在发现人脸位置低于坐姿线或者太接近屏幕时发出提醒。",
             "Reminds you when your face is below the posture line or too close to the screen.");
         PostureIntervalHeader.Text = L.T("坐姿检测间隔", "Posture check interval");
@@ -89,22 +89,18 @@ public sealed partial class MainWindow
         MaxIntervalHintText.Text = L.T("间隔越长越省电，但离开后可能要等更久才锁定。", "Longer intervals save power, but it can take longer to lock the PC after you leave.");
         MaxIntervalPicker.SetLabels(L.T("时", "h"), L.T("分", "min"), L.T("秒", "s"));
         UpdateIntervalGrowthUi();
-        AwayFollowText.Text = L.T("跟随系统电源策略", "Follow Windows power settings");
-        AwayLockText.Text = L.T("由『在吗』接管：检测到离开后锁定电脑", "Let AreYouThere lock the PC when you leave");
         LockDelayCard.Header = L.T("锁定时机", "Lock delay after absence is detected");
         LockDelayHintText.Text = L.T("检测到离开后等待多久再锁定，设为 0 秒立即锁定。", "How long to wait after absence is detected before locking. Set to 0 seconds to lock immediately.");
+        LocalizePower();
+        LocalizeLockImage();
         LockDelayPicker.SetLabels(L.T("时", "h"), L.T("分", "min"), L.T("秒", "s"));
         DimCard.Header = L.T("倒计时期间调暗屏幕", "Dim the screen during the countdown");
-        DimHintText.Text = L.T("锁定前屏幕变暗，提醒你快要锁定了；回到摄像头前即可取消。",
-            "The screen darkens before the PC locks. Return to the camera's view to cancel.");
         DimModeCard.Header = L.T("调暗方式", "How to dim");
         DimOverlayText.Text = L.T("黑色遮罩", "Black overlay");
         DimOverlayNote.Text = L.T("所有显示器都有效。调到 100% 时整屏全黑，临时挡住屏幕内容。", "Works on every display. At 100% the screen goes fully black, hiding its contents.");
         DimBrightnessText.Text = L.T("降低显示器亮度", "Lower display brightness");
         DimLevelCard.Header = L.T("压暗强度", "Dim strength");
         if (_ready) _ = UpdateDimModeNotesAsync();
-        TrayHintText.Text = L.T("关闭窗口后在托盘继续运行；右键托盘图标可启用/关闭或退出。",
-            "Closing the window keeps the app running in the tray; right-click the tray icon to turn detection on or off, or to exit.");
         LanguageCard.Header = L.T("语言", "Language");
         ThemeCard.Header = L.T("主题", "Theme");
         SetItemTexts(ThemeBox, L.Zh ? ["跟随系统", "浅色", "深色"] : ["System default", "Light", "Dark"]);
@@ -124,6 +120,9 @@ public sealed partial class MainWindow
             L.T("调整好坐姿和摄像头位置，把阈值设为略低于预览中的百分比。面积大于此阈值的人脸才算你在电脑前；太小的人脸，会被忽略。在公共场合请稍微调大此阈值避免误认路人，导致自动锁定失效。",
                 "Sit in your usual position and adjust the camera. Set the threshold slightly below the percentage shown above your face in the preview. Smaller faces are ignored. In public places, increase the threshold to help filter out passersby, whose faces could otherwise keep the PC unlocked after you leave."));
     }
+
+    /// <summary>可展开卡片的标题：FontSize 传不到 SettingsExpander 的标题，用 CardTitle 样式（16）与普通卡片统一。</summary>
+    private TextBlock CardHeader(string text) => new() { Text = text, Style = (Style)WindowRoot.Resources["CardTitle"] };
 
     /// <summary>
     /// 滑块标题：第一行标题 + “如何设置”，第二行小字说明。
@@ -194,5 +193,6 @@ public sealed partial class MainWindow
         _presence.RefreshLanguage();
         Report(!_detection.Enabled ? L.T("未启用", "Off") : _detection.Paused != PauseReason.None ? PausedStatus() : RunningStatus());
         _ = RefreshCamerasAsync();
+        _ = BuildGalleryAsync(); // 卡片上的文字跟着换语言
     }
 }
